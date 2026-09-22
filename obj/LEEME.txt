@@ -1,0 +1,4 @@
+Archivos intermedios de compilación (.obj, .pdb, .tlog), separados por plataforma
+y configuración: obj\x64\Debug\ y obj\x64\Release\.
+
+Esta carpeta se genera al compilar: NO va en el zip de entrega.

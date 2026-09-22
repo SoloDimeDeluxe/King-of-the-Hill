@@ -1,0 +1,9 @@
+Acá caen los ejecutables al compilar, separados por plataforma y configuración:
+
+  bin\x64\Debug\KingOfTheHill.exe     (con consola)
+  bin\x64\Release\KingOfTheHill.exe   (sin consola)
+
+Al lado del .exe se copia la carpeta assets\ automáticamente (evento post-build),
+así que el ejecutable se puede mover solo y sigue encontrando las fuentes.
+
+Esta carpeta se genera al compilar: NO va en el zip de entrega.

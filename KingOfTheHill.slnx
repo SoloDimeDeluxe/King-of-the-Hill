@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="KingOfTheHill.vcxproj" Id="863a2191-7346-44cb-b458-41d0d4ec50cf" />
+</Solution>
