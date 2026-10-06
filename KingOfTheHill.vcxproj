@@ -155,7 +155,11 @@
     <ClCompile Include="src\Game.cpp" />
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\Types.cpp" />
+    <ClCompile Include="src\Assets.cpp" />
+    <ClCompile Include="src\Audio.cpp" />
+    <ClCompile Include="src\Cpu.cpp" />
     <ClCompile Include="src\Effects.cpp" />
+    <ClCompile Include="src\Fx.cpp" />
     <ClCompile Include="src\Ui.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -165,7 +169,12 @@
     <ClInclude Include="src\Dice.h" />
     <ClInclude Include="src\Game.h" />
     <ClInclude Include="src\Types.h" />
+    <ClInclude Include="src\Assets.h" />
+    <ClInclude Include="src\Audio.h" />
+    <ClInclude Include="src\Cpu.h" />
     <ClInclude Include="src\Effects.h" />
+    <ClInclude Include="src\Fx.h" />
+    <ClInclude Include="src\Theme.h" />
     <ClInclude Include="src\Ui.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

@@ -13,7 +13,21 @@ namespace ReyesCuadra
         MultiplyCapped,
         DivideRoundUp,
         ExtraDice,
-        ValueConvert
+        ValueConvert,
+        SafePlay,
+        FibonacciBonus,
+        HistoryBonus,
+        WinRule,
+        DiceControl,
+        PlayerChoice,
+        TwistRival,
+        ModifyIncoming,
+        BlessingPenalty,
+        BlessingRestriction,
+        TwoPhaseFlat,
+        CombatRolls,
+        HandAction,
+        NoRewardOnWin
     };
 
     enum class EffectScope
@@ -21,7 +35,10 @@ namespace ReyesCuadra
         NextRoll,
         NextExplorationRoll,
         NextCombatRoll,
-        NextCombat
+        NextCombat,
+        NextTwoCombats,
+        Permanent,
+        OnAcquire
     };
 
     struct CardDef
@@ -37,6 +54,8 @@ namespace ReyesCuadra
         int         paramC       = 0;
         int         rollIndex    = -1;
         bool        targetsRival = false;
+        int         uses         = 0;
+        int         condition    = 0;
     };
 
     constexpr int CARD_DESIGN_TOTAL = 96;

@@ -1,5 +1,9 @@
 ﻿#include "Board.h"
+#include "Fx.h"
+#include "Theme.h"
 #include "Ui.h"
+
+#include <cmath>
 
 namespace ReyesCuadra
 {
@@ -7,7 +11,7 @@ namespace ReyesCuadra
     constexpr float TILE_STEP_X  = 130.0f;
     constexpr float LANE_FIRST_Y = 150.0f;
     constexpr float LANE_STEP_Y  = 92.0f;
-    constexpr float TILE_SIZE    = 54.0f;
+    constexpr float TILE_SIZE    = 56.0f;
 
     constexpr float COMBAT_X = 940.0f;
     constexpr float COMBAT_Y = 100.0f;
@@ -37,6 +41,8 @@ namespace ReyesCuadra
 
     void DrawBoard()
     {
+        float time = static_cast<float>(GetTime());
+
         for (int pathIndex = 0; pathIndex < PATH_COUNT; ++pathIndex)
         {
             PathKind path  = static_cast<PathKind>(pathIndex);
@@ -44,11 +50,12 @@ namespace ReyesCuadra
             Vector2  first = GetTilePosition(path, 0);
             Vector2  last  = GetTilePosition(path, STAGE_COUNT - 1);
 
-            DrawLineEx(Vector2{ first.x - 60.0f, first.y },
-                       Vector2{ COMBAT_X, last.y },
-                       6.0f, Fade(color, 0.35f));
+            DrawLineEx(Vector2{ first.x - 62.0f, first.y + 2.0f },
+                       Vector2{ COMBAT_X, last.y + 2.0f }, 10.0f, Fade(BLACK, 0.30f));
+            DrawLineEx(Vector2{ first.x - 62.0f, first.y },
+                       Vector2{ COMBAT_X, last.y }, 8.0f, Fade(color, 0.30f));
 
-            UiText(GetPathName(path), 40, static_cast<int>(first.y) - 40, 20, color, FontStyle::Bold);
+            UiText(GetPathName(path), 40, static_cast<int>(first.y) - 42, 19, color, FontStyle::Bold);
 
             for (int stage = 0; stage < STAGE_COUNT; ++stage)
             {
@@ -56,29 +63,40 @@ namespace ReyesCuadra
                 Rectangle tile{ center.x - TILE_SIZE * 0.5f, center.y - TILE_SIZE * 0.5f,
                                 TILE_SIZE, TILE_SIZE };
 
-                DrawRectangleRounded(tile, 0.25f, 6, Fade(color, 0.20f));
-                DrawRectangleLinesEx(tile, 2.0f, color);
+                Rectangle shadow = tile;
+                shadow.x += 3.0f; shadow.y += 4.0f;
+                DrawRectangleRounded(shadow, 0.28f, 6, Fade(BLACK, 0.35f));
+
+                DrawRectangleRounded(tile, 0.28f, 6, COL_INK_SOFT);
+                DrawRectangleRounded(Rectangle{ tile.x, tile.y, tile.width, tile.height * 0.45f },
+                                     0.4f, 6, Fade(color, 0.22f));
+                DrawRectangleRoundedLinesEx(tile, 0.28f, 6, 2.0f, Fade(color, 0.85f));
 
                 const char* difficultyText = TextFormat("%i", GetEventDifficulty(path, stage));
                 int textWidth = UiMeasure(difficultyText, 22, FontStyle::Bold);
                 UiText(difficultyText,
                        static_cast<int>(center.x) - textWidth / 2,
-                       static_cast<int>(center.y) - 11,
-                       22, RAYWHITE, FontStyle::Bold);
+                       static_cast<int>(center.y) - 12, 22, COL_CREAM, FontStyle::Bold);
             }
         }
 
         Rectangle combatZone{ COMBAT_X, COMBAT_Y, COMBAT_W, COMBAT_H };
-        DrawRectangleRounded(combatZone, 0.10f, 8, Fade(GOLD, 0.15f));
-        DrawRectangleLinesEx(combatZone, 2.0f, GOLD);
+        DrawSoftPanel(combatZone, Fade(COL_MAGENTA, 0.18f), Fade(COL_GOLD, 0.75f), 0.08f);
 
-        UiText("ZONA DE",  static_cast<int>(COMBAT_X) + 70, static_cast<int>(COMBAT_Y) + 100, 24, GOLD, FontStyle::Bold);
-        UiText("COMBATE",  static_cast<int>(COMBAT_X) + 62, static_cast<int>(COMBAT_Y) + 130, 28, GOLD, FontStyle::Bold);
-        UiText("Rey de la colina", static_cast<int>(COMBAT_X) + 52, static_cast<int>(COMBAT_Y) + 180, 16, Fade(GOLD, 0.8f));
+        float glow = 0.55f + 0.25f * Pulse(time, 1.6f);
+        DrawCrown(static_cast<int>(COMBAT_X + COMBAT_W * 0.5f), static_cast<int>(COMBAT_Y) + 70,
+                  52.0f, Fade(COL_GOLD, glow));
+
+        UiTextCentered("ZONA DE COMBATE", static_cast<int>(COMBAT_X + COMBAT_W * 0.5f),
+                       static_cast<int>(COMBAT_Y) + 128, 22, COL_GOLD, FontStyle::Bold);
+        UiTextCentered("Rey de la colina", static_cast<int>(COMBAT_X + COMBAT_W * 0.5f),
+                       static_cast<int>(COMBAT_Y) + 158, 15, Fade(COL_CREAM, 0.75f));
     }
 
     void DrawPlayerTokens(const Player players[], int activePlayer)
     {
+        float time = static_cast<float>(GetTime());
+
         for (int i = 0; i < PLAYER_COUNT; ++i)
         {
             const Player& player = players[i];
@@ -86,29 +104,37 @@ namespace ReyesCuadra
             Vector2 center;
             if (player.stage >= STAGE_COUNT)
             {
-                center.x = COMBAT_X + 60.0f + (i % 2) * 90.0f;
-                center.y = COMBAT_Y + 40.0f + (i / 2) * 60.0f;
+                center.x = COMBAT_X + 58.0f + static_cast<float>(i % 2) * 96.0f;
+                center.y = COMBAT_Y + 212.0f + static_cast<float>(i / 2) * 44.0f;
             }
             else
             {
                 center = GetTilePosition(player.path, player.stage);
+                center.x += static_cast<float>(i % 2) * 22.0f - 11.0f;
+                center.y += static_cast<float>(i / 2) * 22.0f - 11.0f;
+            }
 
-                center.x += static_cast<float>(i % 2) * 20.0f - 10.0f;
-                center.y += static_cast<float>(i / 2) * 20.0f - 10.0f;
+            bool isActive = (i == activePlayer);
+            if (isActive) center.y -= 3.0f + 2.0f * Pulse(time, 4.0f);
+
+            DrawEllipse(static_cast<int>(center.x), static_cast<int>(center.y) + 13,
+                        11.0f, 4.0f, Fade(BLACK, 0.35f));
+
+            if (isActive)
+            {
+                float ring = 17.0f + 3.0f * Pulse(time, 4.0f);
+                DrawCircleV(center, ring, Fade(COL_CREAM, 0.18f));
+                DrawCircleLines(static_cast<int>(center.x), static_cast<int>(center.y), ring, COL_CREAM);
             }
 
             DrawCircleV(center, 12.0f, player.color);
-            DrawCircleLines(static_cast<int>(center.x), static_cast<int>(center.y), 12.0f, BLACK);
-
-            if (i == activePlayer)
-            {
-                DrawCircleLines(static_cast<int>(center.x), static_cast<int>(center.y), 18.0f, RAYWHITE);
-            }
+            DrawCircleV(Vector2{ center.x, center.y - 3.0f }, 8.0f, Fade(WHITE, 0.18f));
+            DrawCircleLines(static_cast<int>(center.x), static_cast<int>(center.y), 12.0f, COL_INK_DEEP);
 
             const char* label = TextFormat("%i", i + 1);
             int labelWidth = UiMeasure(label, 14, FontStyle::Bold);
             UiText(label, static_cast<int>(center.x) - labelWidth / 2,
-                   static_cast<int>(center.y) - 7, 14, BLACK, FontStyle::Bold);
+                   static_cast<int>(center.y) - 8, 14, COL_INK_DEEP, FontStyle::Bold);
         }
     }
 }

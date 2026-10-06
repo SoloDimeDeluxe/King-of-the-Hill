@@ -1,0 +1,40 @@
+# ---- Salidas de compilación -------------------------------------------------
+# Se generan al compilar y no van al repo. Las carpetas quedan con su LEEME.txt
+# para que la estructura siga existiendo en un clon nuevo.
+bin/*
+!bin/LEEME.txt
+obj/*
+!obj/LEEME.txt
+
+# Por si alguien compila con la configuración por defecto de Visual Studio
+x64/
+Win32/
+Debug/
+Release/
+
+# ---- Visual Studio ----------------------------------------------------------
+.vs/
+*.user
+*.suo
+*.sdf
+*.opensdf
+*.VC.db
+*.VC.VC.opendb
+ipch/
+
+# ---- Archivos intermedios y binarios ---------------------------------------
+*.obj
+*.exe
+*.pdb
+*.ilk
+*.idb
+*.tlog
+*.log
+*.iobj
+*.ipdb
+*.exp
+
+# ---- Sistema operativo ------------------------------------------------------
+Thumbs.db
+desktop.ini
+.DS_Store

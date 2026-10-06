@@ -17,6 +17,8 @@ namespace ReyesCuadra
 
     constexpr int COMBAT_ROLLS     = 3;
     constexpr int MAX_COMBAT_ROLLS = 9;
+    constexpr int MAX_DICE         = 5;
+    constexpr int MAX_CHOICES      = 5;
 
     enum class PathKind
     {
@@ -40,8 +42,13 @@ namespace ReyesCuadra
 
     struct CardInstance
     {
-        int  defId = -1;
-        bool spent = false;
+        int  defId        = -1;
+        bool spent        = false;
+        int  rollsLeft    = 0;
+        int  usesLeft     = 0;
+        int  combatsSeen  = 0;
+        bool blockedNow   = false;
+        bool usedInCombat = false;
     };
 
     struct Player
@@ -51,6 +58,7 @@ namespace ReyesCuadra
         PathKind path           = PathKind::Normal;
         int      stage          = 0;
         int      initiativeRoll = 0;
+        bool     isCpu          = false;
 
         std::vector<CardInstance> cards;
     };

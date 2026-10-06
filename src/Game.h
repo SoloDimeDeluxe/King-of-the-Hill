@@ -3,6 +3,7 @@
 #include "Types.h"
 #include "Cards.h"
 #include "Combat.h"
+#include "Effects.h"
 
 #include <string>
 
@@ -13,11 +14,14 @@ namespace ReyesCuadra
         Menu,
         PathSelection,
         EventRoll,
+        EventChoice,
         EventResult,
         CardSelection,
         Initiative,
         InitiativeResult,
         CombatIntro,
+        CombatRoll,
+        CombatChoice,
         CombatResult,
         Victory
     };
@@ -34,6 +38,7 @@ namespace ReyesCuadra
         int currentPlayer = 0;
         int currentStage  = 0;
 
+        RollSession eventSession;
         DiceRoll    eventRoll;
         std::string eventEffects;
         int         eventDifficulty = 0;
@@ -48,6 +53,12 @@ namespace ReyesCuadra
         Duel duels[DUEL_COUNT];
         int  currentDuel = 0;
         int  kingId      = -1;
+
+        int    humanCount    = 4;
+        double revealUntil   = 0.0;
+        double resultTime    = 0.0;
+        double cpuNextAction = 0.0;
+        int    cpuSignature  = -1;
 
         std::string log[LOG_LINES];
     };

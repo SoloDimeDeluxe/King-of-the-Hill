@@ -11,6 +11,7 @@ namespace ReyesCuadra
         int  total        = 0;
         bool criticalHit  = false;
         bool criticalFail = false;
+        int  blessingsUsed = 0;
     };
 
     void InitDice();

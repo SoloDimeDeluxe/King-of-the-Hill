@@ -1,4 +1,5 @@
 ﻿#include "Ui.h"
+#include "Assets.h"
 
 #include <string>
 #include <vector>
@@ -10,19 +11,6 @@ namespace ReyesCuadra
     static Font uiRegularFont;
     static Font uiBoldFont;
     static bool uiFontsLoaded = false;
-
-    static const char* FindAssetPath(const char* relativePath)
-    {
-        if (FileExists(relativePath)) return relativePath;
-
-        const char* nextToExe = TextFormat("%s%s", GetApplicationDirectory(), relativePath);
-        if (FileExists(nextToExe)) return nextToExe;
-
-        const char* upFromExe = TextFormat("%s../../../%s", GetApplicationDirectory(), relativePath);
-        if (FileExists(upFromExe)) return upFromExe;
-
-        return nullptr;
-    }
 
     static Font LoadUiFont(const char* relativePath, const std::vector<int>& codepoints)
     {
