@@ -74,7 +74,7 @@ namespace ReyesCuadra
 
             Vector2 previous{ area.x, area.y + offset };
 
-            for (int x = 8; x <= static_cast<int>(area.width); x += 8)
+            for (int x = 4; x <= static_cast<int>(area.width); x += 4)
             {
                 float fx = area.x + static_cast<float>(x);
                 float y = area.y + offset + std::sin(fx * 0.012f + phase) * amplitude;
@@ -96,22 +96,33 @@ namespace ReyesCuadra
         DrawRectangleRoundedLinesEx(bounds, roundness, 8, 2.0f, border);
     }
 
+    // Ojo: raylib descarta los triángulos que no estén en sentido antihorario
+    // en pantalla. El orden correcto es pico, base izquierda, base derecha.
     void DrawCrown(int x, int y, float size, Color color)
     {
         float w = size;
         float h = size * 0.7f;
 
-        Vector2 left  { static_cast<float>(x) - w * 0.5f, static_cast<float>(y) + h * 0.5f };
-        Vector2 right { static_cast<float>(x) + w * 0.5f, static_cast<float>(y) + h * 0.5f };
+        float centerX = static_cast<float>(x);
+        float baseY   = static_cast<float>(y) + h * 0.5f;
+        float leftX   = centerX - w * 0.5f;
+        float rightX  = centerX + w * 0.5f;
+        float innerL  = centerX - w * 0.17f;
+        float innerR  = centerX + w * 0.17f;
 
-        DrawTriangle(Vector2{ left.x, left.y }, Vector2{ left.x + w * 0.25f, left.y - h },
-                     Vector2{ left.x + w * 0.5f, left.y }, color);
-        DrawTriangle(Vector2{ left.x + w * 0.5f, left.y }, Vector2{ static_cast<float>(x), left.y - h * 1.35f },
-                     Vector2{ right.x - w * 0.5f, right.y }, color);
-        DrawTriangle(Vector2{ right.x - w * 0.5f, right.y }, Vector2{ right.x - w * 0.25f, right.y - h },
-                     Vector2{ right.x, right.y }, color);
+        DrawTriangle(Vector2{ leftX + w * 0.14f, baseY - h },
+                     Vector2{ leftX, baseY },
+                     Vector2{ innerL, baseY }, color);
 
-        DrawRectangleRounded(Rectangle{ left.x, left.y - 2.0f, w, h * 0.32f }, 0.4f, 6, color);
+        DrawTriangle(Vector2{ centerX, baseY - h * 1.4f },
+                     Vector2{ innerL, baseY },
+                     Vector2{ innerR, baseY }, color);
+
+        DrawTriangle(Vector2{ rightX - w * 0.14f, baseY - h },
+                     Vector2{ innerR, baseY },
+                     Vector2{ rightX, baseY }, color);
+
+        DrawRectangleRounded(Rectangle{ leftX, baseY - 3.0f, w, h * 0.36f }, 0.4f, 6, color);
     }
 
     float EaseOutBack(float t)

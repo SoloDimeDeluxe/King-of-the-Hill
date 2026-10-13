@@ -7,6 +7,8 @@ sus efectos reales, y torneo PvP al mejor de 3 tiradas con batalla final.
 
 **Integrantes:** Federico Fernandez Soto · Salvador Rosafioriti · Valentin Reyes
 
+![King of the Hill](docs/menu.png)
+
 ## Compilar
 
 Abrí `KingOfTheHill.slnx` y compilá en **x64**. No hay nada que configurar:

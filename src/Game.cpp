@@ -512,6 +512,12 @@ namespace ReyesCuadra
         return actor >= 0 && game.players[actor].isCpu;
     }
 
+    static Rectangle WidePanelBounds()
+    {
+        return Rectangle{ LEFT_PANEL_X, PANEL_Y,
+                          static_cast<float>(SCREEN_WIDTH) - LEFT_PANEL_X * 2.0f, PANEL_H };
+    }
+
     static bool IsRevealing(const GameState& game)
     {
         return GetTime() < game.revealUntil;
@@ -526,8 +532,8 @@ namespace ReyesCuadra
         DrawRectangle(static_cast<int>(bounds.x), static_cast<int>(bounds.y) + 24,
                       static_cast<int>(bounds.width), 10, Fade(COL_MAGENTA, 0.0f));
 
-        UiText(title, static_cast<int>(bounds.x) + 16, static_cast<int>(bounds.y) + 8,
-               19, COL_CREAM, FontStyle::Bold);
+        UiText(title, static_cast<int>(bounds.x) + 16, static_cast<int>(bounds.y) + 7,
+               20, COL_CREAM, FontStyle::Bold);
     }
 
     static void DrawDie(int x, int y, int size, int value, bool spinning, Color accent)
@@ -591,27 +597,37 @@ namespace ReyesCuadra
 
     static void DrawChoice(const PendingChoice& choice)
     {
-        Rectangle bounds{ LEFT_PANEL_X, PANEL_Y, LEFT_PANEL_W, PANEL_H };
+        Rectangle bounds = WidePanelBounds();
         DrawPanel(bounds, "ELEGÍ");
 
-        UiTextWrapped(choice.title.c_str(), static_cast<int>(LEFT_PANEL_X) + 16,
-                      static_cast<int>(PANEL_Y) + 44, static_cast<int>(LEFT_PANEL_W) - 32,
-                      16, COL_CREAM, 2, FontStyle::Bold);
+        UiTextWrapped(choice.title.c_str(), static_cast<int>(bounds.x) + 16,
+                      static_cast<int>(bounds.y) + 42, static_cast<int>(bounds.width) - 32,
+                      18, COL_CREAM, 1, FontStyle::Bold);
 
-        for (int i = 0; i < static_cast<int>(choice.options.size()); ++i)
+        int count = static_cast<int>(choice.options.size());
+        if (count <= 0) return;
+
+        float available = bounds.height - 86.0f;
+        float step      = available / static_cast<float>(count);
+        if (step > 46.0f) step = 46.0f;
+
+        float rowHeight = step - 8.0f;
+        int   textSize  = (step >= 42.0f) ? 17 : 15;
+
+        for (int i = 0; i < count; ++i)
         {
-            Rectangle row{ LEFT_PANEL_X + 14.0f, PANEL_Y + 88.0f + static_cast<float>(i) * 42.0f,
-                           LEFT_PANEL_W - 28.0f, 36.0f };
+            Rectangle row{ bounds.x + 14.0f, bounds.y + 76.0f + static_cast<float>(i) * step,
+                           bounds.width - 28.0f, rowHeight };
 
             DrawRectangleRounded(row, 0.3f, 6, Fade(COL_MAGENTA, 0.18f));
             DrawRectangleRoundedLinesEx(row, 0.3f, 6, 2.0f, Fade(COL_GOLD, 0.7f));
 
-            UiText(TextFormat("[%i]", i + 1), static_cast<int>(row.x) + 12,
-                   static_cast<int>(row.y) + 9, 16, COL_GOLD, FontStyle::Bold);
+            UiText(TextFormat("[%i]", i + 1), static_cast<int>(row.x) + 14,
+                   static_cast<int>(row.y + rowHeight * 0.5f) - textSize / 2, textSize,
+                   COL_GOLD, FontStyle::Bold);
 
-            UiTextWrapped(choice.options[i].label.c_str(), static_cast<int>(row.x) + 52,
-                          static_cast<int>(row.y) + 10, static_cast<int>(row.width) - 70,
-                          15, COL_CREAM, 1);
+            UiText(choice.options[i].label.c_str(), static_cast<int>(row.x) + 58,
+                   static_cast<int>(row.y + rowHeight * 0.5f) - textSize / 2, textSize, COL_CREAM);
         }
     }
 
@@ -650,7 +666,7 @@ namespace ReyesCuadra
                    COL_INK_DEEP, FontStyle::Bold);
 
             UiText(TextFormat("Jugador %i", i + 1),
-                   static_cast<int>(RIGHT_PANEL_X) + 54, rowY + 1, 17, COL_CREAM, FontStyle::Bold);
+                   static_cast<int>(RIGHT_PANEL_X) + 54, rowY + 1, 18, COL_CREAM, FontStyle::Bold);
 
             if (player.isCpu)
             {
@@ -661,20 +677,20 @@ namespace ReyesCuadra
             }
 
             UiText(GetPathName(player.path),
-                   static_cast<int>(RIGHT_PANEL_X) + 54, rowY + 22, 14, GetPathColor(player.path));
+                   static_cast<int>(RIGHT_PANEL_X) + 54, rowY + 23, 15, GetPathColor(player.path));
 
             UiText(TextFormat("%i", CountCards(player, CardKind::Blessing)),
                    static_cast<int>(RIGHT_PANEL_X) + 230, rowY + 10, 18, COL_BLESSING, FontStyle::Bold);
-            UiText("bendiciones", static_cast<int>(RIGHT_PANEL_X) + 248, rowY + 13, 13,
+            UiText("bendiciones", static_cast<int>(RIGHT_PANEL_X) + 250, rowY + 12, 14,
                    Fade(COL_BLESSING, 0.75f));
 
             UiText(TextFormat("%i", CountCards(player, CardKind::Curse)),
                    static_cast<int>(RIGHT_PANEL_X) + 370, rowY + 10, 18, COL_CURSE, FontStyle::Bold);
-            UiText("maldiciones", static_cast<int>(RIGHT_PANEL_X) + 388, rowY + 13, 13,
+            UiText("maldiciones", static_cast<int>(RIGHT_PANEL_X) + 390, rowY + 12, 14,
                    Fade(COL_CURSE, 0.75f));
 
             UiText(TextFormat("%i sin usar", CountPendingCards(player)),
-                   static_cast<int>(RIGHT_PANEL_X) + 470, rowY + 13, 13, COL_CREAM_DIM);
+                   static_cast<int>(RIGHT_PANEL_X) + 468, rowY + 12, 15, COL_CREAM_DIM);
         }
     }
 
@@ -682,17 +698,19 @@ namespace ReyesCuadra
     {
         for (int i = 0; i < LOG_LINES; ++i)
         {
-            float alpha = 0.30f + 0.12f * static_cast<float>(i);
+            float alpha = 0.38f + 0.14f * static_cast<float>(i);
 
             UiText(game.log[i].c_str(),
                    static_cast<int>(LEFT_PANEL_X) + 16,
-                   static_cast<int>(PANEL_Y) + 190 + i * 16,
-                   13, Fade(COL_CREAM, alpha));
+                   static_cast<int>(PANEL_Y) + 186 + i * 20,
+                   15, Fade(COL_CREAM, alpha));
         }
     }
 
     static void DrawCardOptionsUI(const GameState& game)
     {
+        Rectangle panel = WidePanelBounds();
+
         for (int i = 0; i < game.cardOptionCount; ++i)
         {
             const CardDef& def = GetCardDef(game.cardOptions[i]);
@@ -701,26 +719,30 @@ namespace ReyesCuadra
             Color color = isBlessing ? COL_BLESSING : COL_CURSE;
             Color levelColor = GetPathColor(static_cast<PathKind>(static_cast<int>(def.level)));
 
-            Rectangle bounds{ LEFT_PANEL_X + 14.0f, PANEL_Y + 44.0f + static_cast<float>(i) * 68.0f,
-                              LEFT_PANEL_W - 28.0f, 62.0f };
+            Rectangle bounds{ panel.x + 14.0f, panel.y + 44.0f + static_cast<float>(i) * 72.0f,
+                              panel.width - 28.0f, 66.0f };
 
             DrawRectangleRounded(bounds, 0.16f, 6, Fade(COL_INK_DEEP, 0.75f));
-            DrawRectangleRounded(Rectangle{ bounds.x, bounds.y, bounds.width, 22.0f }, 0.5f, 6,
+            DrawRectangleRounded(Rectangle{ bounds.x, bounds.y, bounds.width, 26.0f }, 0.5f, 6,
                                  Fade(color, 0.28f));
             DrawRectangleRoundedLinesEx(bounds, 0.16f, 6, 2.0f, Fade(color, 0.85f));
-            DrawRectangleRounded(Rectangle{ bounds.x + 6.0f, bounds.y + 6.0f, 5.0f, bounds.height - 12.0f },
+            DrawRectangleRounded(Rectangle{ bounds.x + 6.0f, bounds.y + 6.0f, 6.0f, bounds.height - 12.0f },
                                  0.8f, 4, levelColor);
 
             UiText(TextFormat("[%i]", i + 1),
-                   static_cast<int>(bounds.x) + 18, static_cast<int>(bounds.y) + 4, 15,
+                   static_cast<int>(bounds.x) + 20, static_cast<int>(bounds.y) + 4, 17,
                    COL_CREAM, FontStyle::Bold);
 
             UiText(def.name,
-                   static_cast<int>(bounds.x) + 52, static_cast<int>(bounds.y) + 3, 17, color, FontStyle::Bold);
+                   static_cast<int>(bounds.x) + 58, static_cast<int>(bounds.y) + 3, 19, color, FontStyle::Bold);
+
+            UiText(GetCardLevelName(def.level),
+                   static_cast<int>(bounds.x + bounds.width) - 110, static_cast<int>(bounds.y) + 6, 15,
+                   Fade(levelColor, 0.9f), FontStyle::Bold);
 
             UiTextWrapped(def.text,
-                          static_cast<int>(bounds.x) + 18, static_cast<int>(bounds.y) + 26,
-                          static_cast<int>(bounds.width) - 32, 13, COL_CREAM_DIM, 2);
+                          static_cast<int>(bounds.x) + 20, static_cast<int>(bounds.y) + 32,
+                          static_cast<int>(bounds.width) - 40, 16, COL_CREAM, 2);
         }
     }
 
@@ -751,13 +773,13 @@ namespace ReyesCuadra
         std::string rollsA = DescribeRolls(duel.rollsA, shown);
         std::string rollsB = DescribeRolls(duel.rollsB, shown);
 
-        UiText(PlayerLabel(game.players[duel.playerA]), textX, line1, 17,
+        UiText(PlayerLabel(game.players[duel.playerA]), textX, line1, 18,
                game.players[duel.playerA].color, FontStyle::Bold);
-        UiText(rollsA.c_str(), textX + 110, line1, 17, COL_CREAM);
+        UiText(rollsA.c_str(), textX + 150, line1, 20, COL_CREAM, FontStyle::Bold);
 
-        UiText(PlayerLabel(game.players[duel.playerB]), textX, line2, 17,
+        UiText(PlayerLabel(game.players[duel.playerB]), textX, line2, 18,
                game.players[duel.playerB].color, FontStyle::Bold);
-        UiText(rollsB.c_str(), textX + 110, line2, 17, COL_CREAM);
+        UiText(rollsB.c_str(), textX + 150, line2, 20, COL_CREAM, FontStyle::Bold);
 
         DrawCombatPips(duel, textX + 440, line1 + 20, game);
 
@@ -769,7 +791,7 @@ namespace ReyesCuadra
             DrawDie(textX + 330, lineY - 6, 34, value, true, COL_GOLD);
         }
 
-        UiText("! = 20 natural      ? = 1 natural", textX, line3 + 6, 13, Fade(COL_CREAM, 0.45f));
+        UiText("! = 20 natural      ? = 1 natural", textX, line3 + 6, 14, Fade(COL_CREAM, 0.5f));
     }
 
     static void DrawTurnPanel(const GameState& game)
@@ -795,7 +817,7 @@ namespace ReyesCuadra
 
                 UiText(player.isCpu ? "La CPU está eligiendo camino..."
                                     : "Elegí tu camino para esta etapa:",
-                       textX, line1, 17, COL_CREAM);
+                       textX, line1, 18, COL_CREAM);
 
                 const char* labels[3] = { "[1] FÁCIL", "[2] NORMAL", "[3] DIFÍCIL" };
                 const char* rewards[3] = { "carta común", "carta peligrosa", "carta épica" };
@@ -810,10 +832,10 @@ namespace ReyesCuadra
                                                     LEFT_PANEL_W - 44.0f, 24.0f },
                                          0.4f, 6, Fade(GetPathColor(path), 0.12f));
 
-                    UiText(labels[i], textX, rowY, 16, GetPathColor(path), FontStyle::Bold);
+                    UiText(labels[i], textX, rowY, 17, GetPathColor(path), FontStyle::Bold);
                     UiText(TextFormat("dificultad %i", GetEventDifficulty(path, game.currentStage)),
-                           textX + 120, rowY, 16, COL_CREAM);
-                    UiText(rewards[i], textX + 250, rowY, 15, Fade(COL_CREAM, 0.7f));
+                           textX + 130, rowY, 17, COL_CREAM);
+                    UiText(rewards[i], textX + 280, rowY, 16, Fade(COL_CREAM, 0.75f));
                 }
             } break;
 
@@ -822,7 +844,7 @@ namespace ReyesCuadra
                 DrawPanel(bounds, TextFormat("JUGADOR %i  ·  CAMINO %s",
                                              game.currentPlayer + 1, GetPathName(player.path)));
 
-                UiText("Dificultad", textX, line1, 14, Fade(COL_CREAM, 0.6f));
+                UiText("Dificultad", textX, line1, 15, Fade(COL_CREAM, 0.65f));
                 UiText(TextFormat("%i", GetEventDifficulty(player.path, game.currentStage)),
                        textX, line1 + 16, 32, COL_CREAM, FontStyle::Bold);
 
@@ -832,10 +854,10 @@ namespace ReyesCuadra
 
                 std::string pending = DescribePendingEffects(player, nullptr, request);
 
-                UiText("Cartas que se activan en esta tirada:", textX + 90, line1, 14, Fade(COL_CREAM, 0.6f));
+                UiText("Cartas que se activan en esta tirada:", textX + 100, line1, 15, Fade(COL_CREAM, 0.65f));
                 UiTextWrapped(pending.empty() ? "ninguna" : pending.c_str(),
-                              textX + 90, line1 + 20, static_cast<int>(LEFT_PANEL_W) - 130, 14,
-                              pending.empty() ? Fade(COL_CREAM, 0.4f) : COL_GOLD, 2);
+                              textX + 100, line1 + 22, static_cast<int>(LEFT_PANEL_W) - 140, 16,
+                              pending.empty() ? Fade(COL_CREAM, 0.45f) : COL_GOLD, 2);
 
                 if (player.isCpu) UiText("La CPU está por tirar...", textX, line4 + 14, 19,
                                           Fade(COL_CREAM, 0.7f), FontStyle::Bold);
@@ -867,22 +889,22 @@ namespace ReyesCuadra
                     UiText(TextFormat("Total %i", game.eventRoll.total),
                            textX + 76, line1 + 2, 26, COL_CREAM, FontStyle::Bold);
                     UiText(TextFormat("contra dificultad %i", game.eventDifficulty),
-                           textX + 76, line1 + 32, 15, Fade(COL_CREAM, 0.7f));
+                           textX + 76, line1 + 34, 16, Fade(COL_CREAM, 0.75f));
 
                     if (game.eventRoll.criticalHit)
                     {
                         UiText("20 NATURAL: éxito crítico, se ignoran los modificadores",
-                               textX, line3 + 14, 15, COL_GOLD);
+                               textX, line3 + 14, 16, COL_GOLD);
                     }
                     else if (game.eventRoll.criticalFail)
                     {
                         UiText("1 NATURAL: fallo crítico, se ignoran los modificadores",
-                               textX, line3 + 14, 15, ORANGE);
+                               textX, line3 + 14, 16, ORANGE);
                     }
                     else if (!game.eventEffects.empty())
                     {
                         UiTextWrapped(TextFormat("Se aplicaron: %s", game.eventEffects.c_str()),
-                                      textX, line3 + 10, static_cast<int>(LEFT_PANEL_W) - 32, 14, COL_GOLD, 2);
+                                      textX, line3 + 10, static_cast<int>(LEFT_PANEL_W) - 32, 16, COL_GOLD, 2);
                     }
 
                     if (player.isCpu)
@@ -894,16 +916,16 @@ namespace ReyesCuadra
                     {
                         UiText(game.eventSuccess ? "[ESPACIO] elegir bendición"
                                                  : "[ESPACIO] recibir maldición",
-                               textX, line4 + 14, 19, COL_GOLD, FontStyle::Bold);
+                               textX, line4 + 12, 20, COL_GOLD, FontStyle::Bold);
                     }
                 }
             } break;
 
             case GamePhase::CardSelection:
             {
-                DrawPanel(bounds, TextFormat("%s: %s %s", PlayerLabel(player),
-                                             game.offerKind == CardKind::Blessing ? "bendición" : "maldición",
-                                             GetCardLevelName(game.offerLevel)));
+                DrawPanel(WidePanelBounds(),
+                          TextFormat("%s: elegí una %s", PlayerLabel(player),
+                                     game.offerKind == CardKind::Blessing ? "bendición" : "maldición"));
 
                 DrawCardOptionsUI(game);
             } break;
@@ -911,9 +933,9 @@ namespace ReyesCuadra
             case GamePhase::Initiative:
             {
                 DrawPanel(bounds, "FASE DE COMBATE");
-                UiText("Los cuatro jugadores llegaron a la cima.", textX, line1, 17, COL_CREAM);
-                UiText("La iniciativa define los cruces del torneo.", textX, line2, 15, Fade(COL_CREAM, 0.7f));
-                UiText("[ESPACIO] tirar iniciativa", textX, line4 + 14, 19, COL_GOLD, FontStyle::Bold);
+                UiText("Los cuatro jugadores llegaron a la cima.", textX, line1, 18, COL_CREAM);
+                UiText("La iniciativa define los cruces del torneo.", textX, line2, 16, Fade(COL_CREAM, 0.75f));
+                UiText("[ESPACIO] tirar iniciativa", textX, line4 + 12, 20, COL_GOLD, FontStyle::Bold);
             } break;
 
             case GamePhase::InitiativeResult:
@@ -922,16 +944,16 @@ namespace ReyesCuadra
 
                 UiText(TextFormat("Semifinal 1:  Jugador %i  vs  Jugador %i",
                                   game.duels[0].playerA + 1, game.duels[0].playerB + 1),
-                       textX, line1, 17, COL_CREAM);
+                       textX, line1, 18, COL_CREAM);
 
                 UiText(TextFormat("Semifinal 2:  Jugador %i  vs  Jugador %i",
                                   game.duels[1].playerA + 1, game.duels[1].playerB + 1),
-                       textX, line2, 17, COL_CREAM);
+                       textX, line2, 18, COL_CREAM);
 
                 UiText("Después juegan los dos perdedores y, al final, los dos ganadores.",
-                       textX, line3, 14, Fade(COL_CREAM, 0.7f));
+                       textX, line3, 15, Fade(COL_CREAM, 0.75f));
 
-                UiText("[ESPACIO] continuar", textX, line4 + 14, 19, COL_GOLD, FontStyle::Bold);
+                UiText("[ESPACIO] continuar", textX, line4 + 12, 20, COL_GOLD, FontStyle::Bold);
             } break;
 
             case GamePhase::CombatIntro:
@@ -942,14 +964,14 @@ namespace ReyesCuadra
 
                 UiText(GetDuelTitle(duel), textX, line1, 23, COL_CREAM, FontStyle::Bold);
                 UiText(TextFormat("Al mejor de %i tiradas.", COMBAT_ROLLS),
-                       textX, line2 + 8, 15, Fade(COL_CREAM, 0.7f));
+                       textX, line2 + 8, 16, Fade(COL_CREAM, 0.75f));
 
                 UiText(TextFormat("Cartas sin usar:  J%i tiene %i    ·    J%i tiene %i",
                                   duel.playerA + 1, CountPendingCards(game.players[duel.playerA]),
                                   duel.playerB + 1, CountPendingCards(game.players[duel.playerB])),
-                       textX, line3 + 8, 15, Fade(COL_CREAM, 0.7f));
+                       textX, line3 + 8, 16, Fade(COL_CREAM, 0.75f));
 
-                UiText("[ESPACIO] empezar el combate", textX, line4 + 14, 19, COL_GOLD, FontStyle::Bold);
+                UiText("[ESPACIO] empezar el combate", textX, line4 + 12, 20, COL_GOLD, FontStyle::Bold);
             } break;
 
             case GamePhase::CombatRoll:
@@ -966,12 +988,12 @@ namespace ReyesCuadra
                     if (IsCpuPlaying(game, who))
                     {
                         UiText(TextFormat("Tira la CPU (Jugador %i)...", who + 1),
-                               textX, line4 + 14, 19, Fade(COL_CREAM, 0.7f), FontStyle::Bold);
+                               textX, line4 + 12, 20, Fade(COL_CREAM, 0.75f), FontStyle::Bold);
                     }
                     else
                     {
                         UiText(TextFormat("[ESPACIO] tira el Jugador %i", who + 1),
-                               textX, line4 + 14, 19, COL_GOLD, FontStyle::Bold);
+                               textX, line4 + 12, 20, COL_GOLD, FontStyle::Bold);
                     }
                 }
             } break;
@@ -1002,12 +1024,12 @@ namespace ReyesCuadra
                 if (!effects.empty())
                 {
                     UiTextWrapped(TextFormat("Cartas aplicadas: %s", effects.c_str()),
-                                  textX, line3 + 26, static_cast<int>(LEFT_PANEL_W) - 32, 13, COL_GOLD, 2);
+                                  textX, line3 + 26, static_cast<int>(LEFT_PANEL_W) - 32, 15, COL_GOLD, 2);
                 }
 
                 if (!IsRevealing(game))
                 {
-                    UiText("[ESPACIO] continuar", textX, line4 + 14, 19, COL_GOLD, FontStyle::Bold);
+                    UiText("[ESPACIO] continuar", textX, line4 + 12, 20, COL_GOLD, FontStyle::Bold);
                 }
             } break;
 
@@ -1023,7 +1045,8 @@ namespace ReyesCuadra
         UiText(title, centerX - width / 2 + 3, y + 4, size, Fade(COL_MAGENTA, 0.9f), FontStyle::Bold);
         UiText(title, centerX - width / 2, y, size, COL_CREAM, FontStyle::Bold);
 
-        DrawCrown(centerX + width / 2 + 6, y + 4, size * 0.55f, COL_GOLD);
+        DrawCrown(centerX + width / 2 + static_cast<int>(size * 0.42f),
+                  y - static_cast<int>(size * 0.06f), size * 0.5f, COL_GOLD);
     }
 
     static void DrawMenu(int humanCount)
@@ -1057,8 +1080,8 @@ namespace ReyesCuadra
         for (int i = 0; i < 5; ++i)
         {
             int y = 338 + i * 28;
-            DrawCircle(static_cast<int>(card.x) + 32, y + 8, 4.0f, COL_MAGENTA_LIT);
-            UiText(rules[i], static_cast<int>(card.x) + 48, y, 16, Fade(COL_CREAM, 0.9f));
+            DrawCircle(static_cast<int>(card.x) + 34, y + 9, 4.0f, COL_MAGENTA_LIT);
+            UiText(rules[i], static_cast<int>(card.x) + 58, y, 16, Fade(COL_CREAM, 0.9f));
         }
 
         UiTextCentered("¿CUÁNTOS JUEGAN?", SCREEN_WIDTH / 2, 518, 15,
@@ -1069,8 +1092,8 @@ namespace ReyesCuadra
             int humans = i + 1;
             bool selected = (humans == humanCount);
 
-            Rectangle box{ SCREEN_WIDTH / 2.0f - 170.0f + static_cast<float>(i) * 88.0f,
-                           542.0f, 72.0f, 42.0f };
+            Rectangle box{ SCREEN_WIDTH / 2.0f - 182.0f + static_cast<float>(i) * 94.0f,
+                           542.0f, 80.0f, 46.0f };
 
             DrawRectangleRounded(box, 0.3f, 6, selected ? Fade(COL_MAGENTA, 0.75f)
                                                         : Fade(COL_INK_DEEP, 0.6f));
@@ -1082,7 +1105,8 @@ namespace ReyesCuadra
                            selected ? COL_CREAM : Fade(COL_CREAM, 0.6f), FontStyle::Bold);
             UiTextCentered(humans == 1 ? "jugador" : "jugadores",
                            static_cast<int>(box.x + box.width * 0.5f),
-                           static_cast<int>(box.y) + 28, 10, Fade(COL_CREAM, 0.6f));
+                           static_cast<int>(box.y) + 26, 12,
+                           selected ? Fade(COL_CREAM, 0.85f) : Fade(COL_CREAM, 0.55f));
         }
 
         int cpuCount = PLAYER_COUNT - humanCount;
@@ -1182,14 +1206,14 @@ namespace ReyesCuadra
 
         DrawRectangle(0, 0, SCREEN_WIDTH, 76, Fade(COL_INK_DEEP, 0.55f));
         DrawTitle(206, 16, 26);
-        UiText(CREDITS_LINE, 42, 52, 13, Fade(COL_CREAM, 0.42f));
+        UiText(CREDITS_LINE, 42, 52, 14, Fade(COL_CREAM, 0.45f));
 
         if (IsAudioMuted())
         {
-            UiText("SIN SONIDO [M]", SCREEN_WIDTH - 210, 54, 13, Fade(COL_CREAM, 0.5f));
+            UiText("SIN SONIDO [M]", SCREEN_WIDTH - 210, 54, 14, Fade(COL_CREAM, 0.55f));
         }
 
-        UiText("[F11] pantalla completa", 42, SCREEN_HEIGHT - 20, 12, Fade(COL_CREAM, 0.3f));
+        UiText("[F11] pantalla completa", 42, SCREEN_HEIGHT - 22, 14, Fade(COL_CREAM, 0.35f));
 
         UiText(TextFormat("Etapa %i / %i",
                           (game.currentStage < STAGE_COUNT ? game.currentStage + 1 : STAGE_COUNT),
@@ -1214,8 +1238,10 @@ namespace ReyesCuadra
                           game.phase == GamePhase::EventChoice ||
                           game.phase == GamePhase::CombatChoice);
 
-        if (!busyPanel) DrawLog(game);
-
-        DrawPlayerList(game);
+        if (!busyPanel)
+        {
+            DrawLog(game);
+            DrawPlayerList(game);
+        }
     }
 }

@@ -26,7 +26,7 @@ namespace ReyesCuadra
         Victory
     };
 
-    constexpr int LOG_LINES = 5;
+    constexpr int LOG_LINES = 4;
 
     struct GameState
     {
