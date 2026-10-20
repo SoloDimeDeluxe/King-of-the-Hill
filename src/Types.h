@@ -60,6 +60,11 @@ namespace ReyesCuadra
         int      initiativeRoll = 0;
         bool     isCpu          = false;
 
+        // Posición dibujada: va persiguiendo a stage y path para que la ficha
+        // se deslice en lugar de saltar de casilla.
+        float    visualStage    = 0.0f;
+        float    visualLane     = 1.0f;
+
         std::vector<CardInstance> cards;
     };
 

@@ -7,6 +7,7 @@ namespace ReyesCuadra
     int GetEventDifficulty(PathKind path, int stage);
 
     Vector2 GetTilePosition(PathKind path, int stage);
+    Vector2 GetTilePositionSmooth(float lane, float stage);
 
     void DrawBoard();
 

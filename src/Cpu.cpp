@@ -101,4 +101,62 @@ namespace ReyesCuadra
 
         return best;
     }
+
+    // Primero asegura la victoria: va por las partes que cuentan y que menos
+    // dificultad piden. Sólo si ya le sobran turnos prueba suerte con la parte
+    // de bonus, que es la que da la recompensa grande.
+    int CpuChoosePart(const Enemy& enemy, PathKind path, int stage)
+    {
+        int needed = enemy.neededDowns - CountDownedCounting(enemy);
+
+        int woundsToWin = 0;
+        for (int i = 0; i < enemy.partCount; ++i)
+        {
+            if (enemy.parts[i].counts && enemy.parts[i].woundsLeft > 0)
+            {
+                woundsToWin += enemy.parts[i].woundsLeft;
+            }
+        }
+
+        bool comfortable = (needed <= 0) ||
+                           (enemy.turnsLeft > woundsToWin + 1);
+
+        if (comfortable)
+        {
+            for (int i = 0; i < enemy.partCount; ++i)
+            {
+                if (!enemy.parts[i].counts && enemy.parts[i].woundsLeft > 0) return i;
+            }
+        }
+
+        int best      = -1;
+        int bestValue = 0;
+
+        for (int i = 0; i < enemy.partCount; ++i)
+        {
+            if (enemy.parts[i].woundsLeft <= 0) continue;
+            if (!enemy.parts[i].counts) continue;
+
+            int value = GetPartDifficulty(enemy, i, path, stage) * 4 + enemy.parts[i].woundsLeft;
+
+            if (best < 0 || value < bestValue) { best = i; bestValue = value; }
+        }
+
+        return (best >= 0) ? best : FirstAlivePart(enemy);
+    }
+
+    // Con el combate ya ganado, sólo sigue si le sobran turnos para tumbar la
+    // parte de bonus; si no, se lleva la recompensa y no arriesga maldiciones.
+    bool CpuKeepsFighting(const Enemy& enemy)
+    {
+        for (int i = 0; i < enemy.partCount; ++i)
+        {
+            if (enemy.parts[i].counts) continue;
+            if (enemy.parts[i].woundsLeft <= 0) continue;
+
+            return enemy.turnsLeft > enemy.parts[i].woundsLeft;
+        }
+
+        return false;
+    }
 }

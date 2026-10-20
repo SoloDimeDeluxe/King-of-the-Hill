@@ -1,9 +1,9 @@
 # King of the Hill
 
-Prototipo digital del juego de mesa, en C++ con raylib. De 1 a 4 jugadores en
-la misma computadora —los lugares que sobran los juega la CPU—: exploración de
-la montaña con eventos de D20, las 96 bendiciones y maldiciones del diseño con
-sus efectos reales, y torneo PvP al mejor de 3 tiradas con batalla final.
+Prototipo digital del juego de mesa, en C++ con raylib. **Un jugador contra
+tres rivales controlados por la CPU**: exploración de la montaña con eventos de
+D20, las 96 bendiciones y maldiciones del diseño con sus efectos reales, y
+torneo al mejor de 3 tiradas con batalla final.
 
 **Integrantes:** Federico Fernandez Soto · Salvador Rosafioriti · Valentin Reyes
 
@@ -42,10 +42,13 @@ King-of-the-Hill/
 
 | Fase | Teclas |
 |---|---|
-| Menú | `1`…`4` cuántos juegan · `ENTER` empezar |
-| Elegir camino | `1` fácil (gris) · `2` normal (rojo) · `3` difícil (púrpura) |
+| Menú | `ENTER` empezar |
+| Orden de turnos | `ESPACIO` para tirar al empezar la partida |
+| Elegir camino | `1` fácil (gris) · `2` normal (rojo) · `3` difícil (púrpura) · `ENTER` confirmar |
+| Ver las cartas | `TAB` en cualquier momento · `1`…`4` para ver las de cada jugador |
 | Tirar el D20 | `ESPACIO` |
 | Elegir carta | `1` · `2` · `3` |
+| Enemigo | `1`…`4` elegir la parte · `ESPACIO` atacar · `ENTER` cobrar si ya ganaste |
 | Combate | `ESPACIO` por tirada |
 | Elegir (cartas que lo piden) | `1` … `5` |
 | Pantalla final | `R` jugar de nuevo · `ESC` salir |
@@ -53,9 +56,19 @@ King-of-the-Hill/
 
 ## Reglas
 
-- **Exploración**: 6 etapas. Cada jugador elige libremente uno de los tres
-  caminos y tira un D20 contra la dificultad de la casilla (fácil 8, normal 12,
-  difícil 16, con +1 cada dos etapas).
+- **Orden de turnos**: al empezar, los cuatro tiran un D20. El más alto abre la
+  partida y lo sigue el jugador de su derecha, como en el manual del juego de
+  mesa. Ese orden vale para toda la exploración.
+- **Exploración**: 6 etapas que suben de la base a la cima. Cada jugador elige
+  libremente uno de los tres caminos y tira un D20 contra la dificultad de la
+  casilla (fácil 8, normal 12, difícil 16, con +1 cada dos etapas). La ficha se
+  mueve al camino apenas lo elegís, pero podés cambiarlo las veces que quieras
+  hasta confirmar con `ENTER`.
+- **Eventos y enemigos**: las etapas **1, 3 y 5** son eventos (una sola tirada
+  contra la dificultad). Las etapas **2, 4 y 6** son combates contra un enemigo
+  (ver más abajo). El resultado reparte carta igual en los dos casos.
+- **Consulta de cartas**: `TAB` abre en cualquier momento la lista de cartas de
+  cada jugador, con su texto completo y si ya se usaron.
 - **Cartas**: se ofrecen 3 del mazo correspondiente, el jugador guarda 1 y las
   otras 2 vuelven al mazo. El camino define el mazo: fácil da comunes, normal
   peligrosas y difícil épicas.
@@ -71,10 +84,13 @@ King-of-the-Hill/
 
 ## Jugadores y CPU
 
-En el menú se elige con `1`…`4` cuántas personas juegan; los lugares que quedan
-libres los toma la CPU, que juega con las mismas reglas y las mismas cartas (no
-hace trampa ni ve nada que un jugador no vea). Las fichas de CPU están marcadas
-en el panel de jugadores y en los combates.
+El juego es de **un jugador**: los otros tres puestos los maneja la CPU, que
+juega con las mismas reglas y las mismas cartas (no hace trampa ni ve nada que
+el jugador no vea). Las fichas de CPU están marcadas en el panel de jugadores y
+en los combates.
+
+El motor soporta más de un humano (`humanCount` en `GameState`), pero la
+interfaz lo deja fijo en 1 porque el diseño es para un jugador.
 
 La CPU piensa medio segundo antes de cada acción para que se pueda seguir lo
 que hace, y sus decisiones están en `src/Cpu.cpp`:
@@ -87,9 +103,49 @@ que hace, y sus decisiones están en `src/Cpu.cpp`:
   maldición menos dañina). El puntaje por tipo de efecto está en `ScoreCard`.
 - **Elecciones** (Dado Cambiado, Apuesta controlada, Predicción…): toma la
   opción de mayor valor.
+- **Enemigos**: pega primero en la parte que cuenta y menos dificultad pide, y
+  sólo va por la cabeza cuando le sobran turnos. Con el combate ya ganado se
+  retira en vez de arriesgar otra maldición.
 
 Es una CPU de prototipo: alcanza para que una partida de 1 jugador tenga
 sentido, pero no planifica a futuro ni mira la mano de los rivales.
+
+## Combate contra enemigos (PvE)
+
+**Esto es provisional.** El documento de diseño deja abiertas las preguntas de
+cómo funcionan los enemigos, así que está programada la propuesta de
+**[docs/propuesta-combate-pve.md](docs/propuesta-combate-pve.md)** para que el
+grupo la pruebe jugando y la corrija. Los números están todos juntos en
+`MakeEnemy`, en `src/Enemy.cpp`: cambiarlos es cambiar el juego.
+
+Un enemigo es un conjunto de **partes**. Cada parte pide una dificultad (la del
+camino más un ajuste) y aguanta una cantidad de heridas. Cada turno elegís una
+parte con `1`…`4`, tirás el D20 con `ESPACIO`, y si igualás o superás la
+dificultad le sacás una herida. Si fallás, el enemigo contraataca: te da una
+maldición del nivel del camino, sin poder elegir entre tres.
+
+Las partes violetas son las que **cuentan para ganar**; la cabeza es la apuesta:
+no hace falta, pero derribarla sube un nivel la bendición de la recompensa. Si
+ya ganaste y te sobran turnos podés cobrar con `ENTER` o seguir con `ESPACIO`
+para ir por la cabeza, sabiendo que un fallo todavía te cuesta una maldición.
+
+| Etapa | Enemigo | Partes (ajuste / heridas) | Turnos | Hay que derribar |
+|---|---|---|---|---|
+| 2 | Bestia del camino | Cola −4/1 · Cuerpo −2/1 · **Cabeza** +2/1 | 3 | 2 |
+| 4 | Guardián de la ladera | Patas −5/1 · Cuerpo −3/1 · Ala −2/1 · **Cabeza** +2/1 | 5 | 3 |
+| 6 | Señor de la cima | Cola −5/1 · Cuerpo −4/1 · Garra −3/1 · **Cabeza** +1/2 | 5 | 3 |
+
+Las tiradas pasan por el mismo motor de cartas que todo lo demás, así que las
+bendiciones y maldiciones funcionan igual que en un evento (y el 20 y el 1
+naturales siguen decidiendo solos). Sobre 2.400 combates simulados, los tres
+enemigos se ganan en torno al 90 % en el camino fácil, 60 % en el normal y 22 %
+en el difícil: parecido a la tirada de evento, un poco más generoso para
+compensar las maldiciones del contraataque.
+
+Lo que sigue abierto son las cuatro decisiones del final de la propuesta (vida
+del jugador, si el PvE reemplaza del todo a los eventos, cuántas partes se
+muestran y qué da la cabeza). Hoy están resueltas por defecto: sin vida,
+alternando eventos y combates, hasta 4 partes y bendición de un nivel más.
 
 ## Las 96 cartas
 
@@ -152,7 +208,8 @@ perdida. Vale la pena testearla.
 | `src/Dice.h/.cpp` | el D20 y el RNG |
 | `src/Cards.h/.cpp` | catálogo de las 96 cartas y los 6 mazos |
 | `src/Effects.h/.cpp` | motor de efectos: cómo se resuelve cada tirada |
-| `src/Board.h/.cpp` | geometría del tablero, dificultades y dibujo |
+| `src/Board.h/.cpp` | geometría del tablero vertical, dificultades y dibujo |
+| `src/Enemy.h/.cpp` | los enemigos del PvE: partes, heridas y turnos |
 | `src/Combat.h/.cpp` | iniciativa y torneo al mejor de 3 |
 | `src/Game.h/.cpp` | máquina de estados de la partida y UI |
 | `src/Cpu.h/.cpp` | las decisiones de los jugadores controlados por la máquina |
@@ -182,10 +239,17 @@ archivo.
   recién ahí entra el sonido del resultado. Durante ese rato no se acepta input,
   así que no se puede saltear la tirada sin querer.
 - **Cartel** de ¡ÉXITO! o FALLO que entra con un rebote y se va solo.
-- **Tablero**: casillas con relieve y borde del color del camino, el camino como
-  una ruta gruesa, y la ficha del jugador en turno flota con un anillo que late.
-- **Combate**: tres fichas arriba a la derecha que se van pintando con el color
-  de quien ganó cada tirada.
+- **Tablero**: vertical, en la mitad izquierda de la pantalla. Tres carriles en
+  columna que suben de la base a la zona de combate, con el número de etapa al
+  costado y la dificultad en cada casilla. Las casillas tienen relieve y el
+  borde del color del camino, y la ficha del jugador en turno flota con un
+  anillo que late. Los paneles de turno, jugadores y registro viven en la
+  columna de la derecha.
+- **Enemigo**: ocupa la columna del tablero mientras dura el combate. Una caja
+  por parte —cabeza arriba, cola abajo—, con su tecla, lo que pide, sus heridas
+  como círculos y un borde dorado que late en la que estás apuntando.
+- **Combate**: tres fichas que se van pintando con el color de quien ganó cada
+  tirada.
 - **Menú y pantalla final**: banda magenta con las curvas del folleto, el título
   con su corona y las posiciones finales en un panel.
 
