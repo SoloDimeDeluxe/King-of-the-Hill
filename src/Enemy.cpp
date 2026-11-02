@@ -10,16 +10,14 @@ namespace ReyesCuadra
     // cuántas partes hay que derribar. Cambiar el juego es cambiar números acá.
     // ---------------------------------------------------------------------
 
-    bool StageHasEnemy(int stage)
+    EnemyRank GetTileEnemyRank(TileKind kind)
     {
-        return (stage == 1 || stage == 3 || stage == 5);
-    }
-
-    EnemyRank GetStageEnemyRank(int stage)
-    {
-        if (stage >= 5) return EnemyRank::Boss;
-        if (stage >= 3) return EnemyRank::MiniBoss;
-        return EnemyRank::Common;
+        switch (kind)
+        {
+            case TileKind::MiniBoss: return EnemyRank::MiniBoss;
+            case TileKind::Boss:     return EnemyRank::Boss;
+            default:                 return EnemyRank::Common;
+        }
     }
 
     const char* GetEnemyRankName(EnemyRank rank)
@@ -44,10 +42,10 @@ namespace ReyesCuadra
         return part;
     }
 
-    Enemy MakeEnemy(int stage)
+    Enemy MakeEnemy(TileKind kind)
     {
         Enemy enemy;
-        enemy.rank = GetStageEnemyRank(stage);
+        enemy.rank = GetTileEnemyRank(kind);
 
         switch (enemy.rank)
         {
@@ -69,7 +67,7 @@ namespace ReyesCuadra
             case EnemyRank::Boss:
             {
                 enemy.name     = "SEÑOR DE LA CIMA";
-                enemy.subtitle = "derribá tres de sus cuatro partes";
+                enemy.subtitle = "ganarle es llevarse la corona";
 
                 enemy.parts[0] = MakePart("Cola",   -5, 1, true,  200.0f);
                 enemy.parts[1] = MakePart("Cuerpo", -4, 1, true,  276.0f);

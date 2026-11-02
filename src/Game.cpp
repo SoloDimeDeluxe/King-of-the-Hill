@@ -74,9 +74,55 @@ namespace ReyesCuadra
             player.visualStage    = 0.0f;
             player.visualLane     = static_cast<float>(static_cast<int>(PathKind::Normal));
             player.cards.clear();
+            player.items.clear();
+            player.hasMap       = false;
+            player.extraWounds  = 0;
+            player.bossBeaten   = false;
+            player.bossParts    = 0;
+            player.bossTurnsLeft = 0;
+
+            // El humano juega con el personaje que eligió en el menú; la CPU
+            // toma uno al azar para que no sean siempre iguales.
+            player.character = player.isCpu
+                             ? static_cast<CharacterId>(RandomInt(0, static_cast<int>(CharacterId::Count) - 1))
+                             : game.menuCharacter;
         }
 
         InitDeckSet(game.deckSet);
+
+        for (int i = 0; i < PLAYER_COUNT; ++i)
+        {
+            Player& player = game.players[i];
+            const CharacterDef& def = GetCharacterDef(player.character);
+
+            for (int n = 0; n < def.startItems; ++n)
+            {
+                GiveItem(player, RollTreasureItem(player));
+            }
+
+            if (def.startCard)
+            {
+                int options[CARD_OPTIONS] = {};
+                int count = DrawCardOptions(game.deckSet, CardKind::Blessing, CardLevel::Weak, options);
+
+                if (count > 0)
+                {
+                    CardInstance card;
+                    card.defId = options[0];
+
+                    const CardDef& cardDef = GetCardDef(card.defId);
+                    if (cardDef.scope == EffectScope::NextRoll ||
+                        cardDef.scope == EffectScope::NextExplorationRoll ||
+                        cardDef.scope == EffectScope::NextCombatRoll)
+                    {
+                        card.rollsLeft = (cardDef.uses > 0) ? cardDef.uses : 1;
+                    }
+
+                    player.cards.push_back(card);
+                    ReturnCardOptions(game.deckSet, CardKind::Blessing, CardLevel::Weak, options, count, 0);
+                }
+            }
+        }
 
         game.currentPlayer   = 0;
         game.currentStage    = 0;
@@ -92,16 +138,19 @@ namespace ReyesCuadra
         game.eventSession    = RollSession{};
         game.cardOptionCount = 0;
         game.rewardBump      = 0;
-        game.currentDuel     = 0;
+        game.rollBonus       = 0;
         game.kingId          = -1;
 
+        game.currentTile = TileKind::Event;
+        game.tileNote.clear();
+
         game.enemy       = Enemy{};
+        game.enemyMemory = CombatMemory{};
         game.enemyTarget = 0;
         game.enemyWon    = false;
         game.enemyNote.clear();
 
-        for (int i = 0; i < DUEL_COUNT; ++i) game.duels[i] = Duel{};
-        for (int i = 0; i < LOG_LINES; ++i)  game.log[i].clear();
+        for (int i = 0; i < LOG_LINES; ++i) game.log[i].clear();
 
         PlayTrack(MusicTrack::Explore);
 
@@ -202,6 +251,93 @@ namespace ReyesCuadra
         if (game.eventSession.done) FinishEventRoll(game);
     }
 
+    // La corona ya no sale de un torneo entre jugadores: se la lleva quien
+    // mejor le fue al jefe de la cima. Si nadie le ganó, no hay rey.
+    static void CrownTheKing(GameState& game)
+    {
+        game.kingId = -1;
+        int bestScore = -1;
+
+        for (int i = 0; i < PLAYER_COUNT; ++i)
+        {
+            const Player& player = game.players[i];
+            if (!player.bossBeaten) continue;
+
+            int score = player.bossParts * 100
+                      + player.bossTurnsLeft * 10
+                      + (PLAYER_COUNT - i);
+
+            if (score > bestScore) { bestScore = score; game.kingId = i; }
+        }
+
+        StopTrack();
+
+        if (game.kingId >= 0)
+        {
+            PlaySfx(SoundId::Victory);
+            AddLog(game, TextFormat("Jugador %i se corona rey de la colina.", game.kingId + 1));
+        }
+        else
+        {
+            PlaySfx(SoundId::Fail);
+            AddLog(game, "Nadie pudo con el jefe: la colina se queda sin rey.");
+        }
+
+        game.phase = GamePhase::Victory;
+    }
+
+    static void AdvanceTurn(GameState& game)
+    {
+        ++game.players[game.currentPlayer].stage;
+        ++game.turnIndex;
+
+        if (game.turnIndex >= PLAYER_COUNT)
+        {
+            game.turnIndex = 0;
+            ++game.currentStage;
+        }
+
+        game.currentPlayer = game.turnOrder[game.turnIndex];
+        game.pathPreview   = game.players[game.currentPlayer].path;
+        game.rollBonus     = 0;
+
+        PlayTrack(MusicTrack::Explore);
+
+        if (game.currentStage >= STAGE_COUNT)
+        {
+            CrownTheKing(game);
+            return;
+        }
+
+        game.phase = GamePhase::PathSelection;
+    }
+
+    // Saca de la mano la peor maldición que todavía no se usó. La comparten la
+    // casilla de descanso y la poción.
+    static bool ClearWorstCurse(Player& player, std::string& removedName)
+    {
+        int best      = -1;
+        int bestValue = -1;
+
+        for (int i = 0; i < static_cast<int>(player.cards.size()); ++i)
+        {
+            const CardInstance& card = player.cards[i];
+            if (card.spent) continue;
+
+            const CardDef& def = GetCardDef(card.defId);
+            if (def.kind != CardKind::Curse) continue;
+
+            int value = static_cast<int>(def.level);
+            if (value > bestValue) { bestValue = value; best = i; }
+        }
+
+        if (best < 0) return false;
+
+        removedName = GetCardDef(player.cards[best].defId).name;
+        player.cards.erase(player.cards.begin() + best);
+        return true;
+    }
+
     static void OfferCards(GameState& game)
     {
         const Player& player = game.players[game.currentPlayer];
@@ -295,39 +431,74 @@ namespace ReyesCuadra
         ApplyOnAcquire(player, game.players, PLAYER_COUNT, defId, message);
         AddLog(game, message.c_str());
 
-        ++player.stage;
-        ++game.turnIndex;
+        AdvanceTurn(game);
+    }
 
-        if (game.turnIndex >= PLAYER_COUNT)
+    // --------------------------------------------- casillas que no son combate
+
+    static void ResolveTreasure(GameState& game)
+    {
+        Player& player = game.players[game.currentPlayer];
+
+        ItemId id = RollTreasureItem(player);
+
+        if (GiveItem(player, id))
         {
-            game.turnIndex = 0;
-            ++game.currentStage;
-        }
-
-        game.currentPlayer = game.turnOrder[game.turnIndex];
-        game.pathPreview   = game.players[game.currentPlayer].path;
-
-        if (game.currentStage >= STAGE_COUNT)
-        {
-            AddLog(game, "Todos llegaron a la zona de combate.");
-            game.phase = GamePhase::Initiative;
+            game.tileNote = TextFormat("Encontraste: %s", GetItemDef(id).name);
         }
         else
         {
-            game.phase = GamePhase::PathSelection;
+            game.tileNote = "La mochila está llena: el cofre queda donde estaba.";
         }
+
+        PlaySfx(SoundId::Card);
+        ShowBanner(game, "TESORO", COL_GOLD);
+        AddLog(game, TextFormat("Jugador %i abre un cofre. %s",
+                                game.currentPlayer + 1, game.tileNote.c_str()));
+
+        game.phase = GamePhase::TreasureResult;
+    }
+
+    static void ResolveRest(GameState& game)
+    {
+        Player& player = game.players[game.currentPlayer];
+
+        std::string removed;
+
+        if (ClearWorstCurse(player, removed))
+        {
+            game.tileNote = TextFormat("Te sacaste de encima: %s", removed.c_str());
+            ShowBanner(game, "DESCANSO", COL_BLESSING);
+        }
+        else
+        {
+            game.tileNote = "No tenías maldiciones pendientes: descansás y seguís.";
+            ShowBanner(game, "DESCANSO", COL_CREAM);
+        }
+
+        PlaySfx(SoundId::Select);
+        AddLog(game, TextFormat("Jugador %i descansa. %s",
+                                game.currentPlayer + 1, game.tileNote.c_str()));
+
+        game.phase = GamePhase::RestResult;
     }
 
     // ------------------------------------------------------- combate contra enemigos
 
     static void StartEnemyFight(GameState& game)
     {
-        const Player& player = game.players[game.currentPlayer];
+        Player& player = game.players[game.currentPlayer];
 
-        game.enemy       = MakeEnemy(game.currentStage);
+        game.enemy       = MakeEnemy(game.currentTile);
         game.enemyTarget = FirstAlivePart(game.enemy);
         game.enemyWon    = false;
         game.enemyNote.clear();
+
+        // Los combates contra enemigos cuentan como combate para las cartas:
+        // sin esto, todas las que dicen "en tu próximo combate" no se usarían
+        // nunca, porque ya no hay torneo entre jugadores.
+        StartCombatEffects(player, player, game.enemyMemory);
+        PlayTrack(MusicTrack::Combat);
 
         AddLog(game, TextFormat("Jugador %i%s se enfrenta a %s",
                                 game.currentPlayer + 1,
@@ -339,9 +510,20 @@ namespace ReyesCuadra
 
     static void FinishEnemyFight(GameState& game)
     {
+        Player& player = game.players[game.currentPlayer];
+
         game.enemyWon     = EnemyBeaten(game.enemy);
         game.eventSuccess = game.enemyWon;
         game.rewardBump   = (game.enemyWon && BonusPartDown(game.enemy)) ? 1 : 0;
+
+        EndCombatEffects(player);
+
+        if (game.enemy.rank == EnemyRank::Boss)
+        {
+            player.bossBeaten    = game.enemyWon;
+            player.bossParts     = CountDownedCounting(game.enemy) + (BonusPartDown(game.enemy) ? 1 : 0);
+            player.bossTurnsLeft = game.enemy.turnsLeft;
+        }
 
         if (game.enemyWon)
         {
@@ -387,6 +569,54 @@ namespace ReyesCuadra
         game.phase       = GamePhase::EnemyTarget;
     }
 
+    // Cierra lo que pasa después de un combate: la casilla opcional paga con
+    // ítems, las demás con la carta de siempre.
+    static void ResolveEnemyOutcome(GameState& game)
+    {
+        Player& player = game.players[game.currentPlayer];
+
+        if (game.currentTile == TileKind::Optional)
+        {
+            if (game.enemyWon)
+            {
+                if (BlocksCombatReward(player))
+                {
+                    AddLog(game, "Corona rota: el ganador no se lleva recompensa.");
+                }
+                else
+                {
+                    ItemId id = RollTreasureItem(player);
+
+                    if (GiveItem(player, id))
+                    {
+                        AddLog(game, TextFormat("Jugador %i se lleva: %s",
+                                                game.currentPlayer + 1, GetItemDef(id).name));
+                        ShowBanner(game, GetItemDef(id).name, COL_GOLD);
+                    }
+                    else
+                    {
+                        AddLog(game, "La mochila estaba llena: la recompensa se pierde.");
+                    }
+                }
+
+                AdvanceTurn(game);
+                return;
+            }
+
+            OfferCards(game);
+            return;
+        }
+
+        if (game.enemyWon && BlocksCombatReward(player))
+        {
+            AddLog(game, "Corona rota: el ganador no se lleva recompensa.");
+            AdvanceTurn(game);
+            return;
+        }
+
+        OfferCards(game);
+    }
+
     static void FinishEnemyRoll(GameState& game)
     {
         Player&    player = game.players[game.currentPlayer];
@@ -394,6 +624,18 @@ namespace ReyesCuadra
 
         game.eventRoll    = game.eventSession.roll;
         game.eventEffects = game.eventSession.appliedNames;
+
+        // El bono del personaje y el del amuleto se suman después de las
+        // cartas, y un crítico los ignora igual que a todo lo demás.
+        int bonus = GetCharacterBonus(player, true) + game.rollBonus;
+
+        if (bonus != 0 && !game.eventRoll.criticalHit && !game.eventRoll.criticalFail)
+        {
+            game.eventRoll.total += bonus;
+            if (game.eventRoll.total < 1) game.eventRoll.total = 1;
+        }
+
+        game.rollBonus = 0;
 
         bool hit;
         if (game.eventRoll.criticalHit)       hit = true;
@@ -405,7 +647,11 @@ namespace ReyesCuadra
 
         if (hit)
         {
-            if (part.woundsLeft > 0) --part.woundsLeft;
+            int damage = 1 + player.extraWounds;
+            player.extraWounds = 0;
+
+            part.woundsLeft -= damage;
+            if (part.woundsLeft < 0) part.woundsLeft = 0;
 
             game.enemyNote = (part.woundsLeft <= 0)
                            ? TextFormat("%s derribada", part.name)
@@ -420,6 +666,17 @@ namespace ReyesCuadra
             PlaySfxDelayed(SoundId::Fail, 0.55f);
             GiveForcedCard(game, CardKind::Curse, GetCardLevelForPath(player.path));
         }
+
+        // El historial del combate es lo que leen las cartas que reaccionan a
+        // las tiradas anteriores.
+        if (game.enemyMemory.rollsPlayed < MAX_COMBAT_ROLLS)
+        {
+            game.enemyMemory.outcomes[game.enemyMemory.rollsPlayed] = hit ? 1 : -1;
+            ++game.enemyMemory.rollsPlayed;
+        }
+
+        if (hit) ++game.enemyMemory.wins;
+        else     ++game.enemyMemory.losses;
 
         AddLog(game, TextFormat("J%i ataca %s: D20 %i -> %i vs %i -> %s",
                                 game.currentPlayer + 1, part.name,
@@ -438,14 +695,14 @@ namespace ReyesCuadra
         Player& player = game.players[game.currentPlayer];
 
         RollRequest request;
-        request.isCombat  = false;
-        request.rollIndex = -1;
+        request.isCombat  = true;
+        request.rollIndex = game.enemyMemory.rollsPlayed;
 
         game.eventDifficulty = GetPartDifficulty(game.enemy, game.enemyTarget,
                                                  player.path, game.currentStage);
 
         PlaySfx(SoundId::Dice);
-        BeginRoll(game.eventSession, player, nullptr, request, nullptr);
+        BeginRoll(game.eventSession, player, nullptr, request, &game.enemyMemory);
 
         if (game.eventSession.choice.active) game.phase = GamePhase::EnemyChoice;
         else if (game.eventSession.done)     FinishEnemyRoll(game);
@@ -460,45 +717,68 @@ namespace ReyesCuadra
         if (game.eventSession.done) FinishEnemyRoll(game);
     }
 
-    static void StepCombat(GameState& game, int option)
+    // Reparte la casilla en la que cayó el jugador.
+    static void EnterTile(GameState& game)
     {
-        Duel& duel = game.duels[game.currentDuel];
+        const Player& player = game.players[game.currentPlayer];
 
-        int rollsBefore = duel.rollsPlayed;
-        bool wasChoosing = DuelChoicePending(duel);
+        game.currentTile = GetTileKind(player.path, game.currentStage);
+        game.tileNote.clear();
 
-        if (wasChoosing) PlaySfx(SoundId::Select);
-        else             PlaySfx(SoundId::Dice);
-
-        StepDuel(duel, game.players, option);
-
-        if (duel.rollsPlayed > rollsBefore) PlaySfxDelayed(SoundId::Hit, 0.45f);
-
-        if (duel.session.done || duel.rollsPlayed > rollsBefore)
+        switch (game.currentTile)
         {
-            game.revealUntil = GetTime() + REVEAL_TIME;
-            game.resultTime  = game.revealUntil;
+            case TileKind::Event:    game.phase = GamePhase::EventRoll;     break;
+            case TileKind::Treasure: ResolveTreasure(game);                 break;
+            case TileKind::Rest:     ResolveRest(game);                     break;
+            case TileKind::Optional: game.phase = GamePhase::OptionalOffer; break;
+            default:                 StartEnemyFight(game);                 break;
+        }
+    }
+
+    // ------------------------------------------------------------------ ítems
+
+    static bool UseItem(GameState& game, int slot)
+    {
+        Player& player = game.players[game.currentPlayer];
+
+        if (slot < 0 || slot >= static_cast<int>(player.items.size())) return false;
+
+        ItemId id = player.items[slot];
+        const ItemDef& def = GetItemDef(id);
+
+        switch (id)
+        {
+            case ItemId::Charm:
+                game.rollBonus += 3;
+                game.tileNote = "Amuleto listo: +3 a la tirada que viene.";
+                break;
+
+            case ItemId::Whetstone:
+                player.extraWounds = 1;
+                game.tileNote = "Piedra de afilar: el próximo golpe saca 2 heridas.";
+                break;
+
+            case ItemId::Potion:
+            {
+                std::string removed;
+
+                if (!ClearWorstCurse(player, removed))
+                {
+                    game.tileNote = "No tenés maldiciones pendientes: la poción queda sin usar.";
+                    return false;
+                }
+
+                game.tileNote = TextFormat("Poción: se va %s", removed.c_str());
+            } break;
+
+            default:
+                return false;
         }
 
-        if (DuelChoicePending(duel))
-        {
-            game.phase = GamePhase::CombatChoice;
-            return;
-        }
-
-        game.phase = GamePhase::CombatRoll;
-
-        if (duel.resolved)
-        {
-            AddLog(game, TextFormat("J%i %i - %i J%i -> gana J%i",
-                                    duel.playerA + 1, duel.winsA,
-                                    duel.winsB, duel.playerB + 1,
-                                    duel.winner + 1));
-            AddLog(game, duel.rewardMessage.c_str());
-            ShowBanner(game, TextFormat("GANA EL JUGADOR %i", duel.winner + 1), COL_GOLD);
-            PlaySfxDelayed(SoundId::Success, 0.9f);
-            game.phase = GamePhase::CombatResult;
-        }
+        RemoveItem(player, slot);
+        PlaySfx(SoundId::Card);
+        AddLog(game, TextFormat("Jugador %i usa %s", game.currentPlayer + 1, def.name));
+        return true;
     }
 
     void InitGame(GameState& game)
@@ -520,16 +800,11 @@ namespace ReyesCuadra
             case GamePhase::EnemyChoice:
             case GamePhase::EnemyResult:
             case GamePhase::EnemyOutcome:
+            case GamePhase::OptionalOffer:
+            case GamePhase::TreasureResult:
+            case GamePhase::RestResult:
             case GamePhase::CardSelection:
                 return game.currentPlayer;
-
-            case GamePhase::CombatRoll:
-            case GamePhase::CombatChoice:
-            {
-                const Duel& duel = game.duels[game.currentDuel];
-                if (duel.playerA < 0 || duel.playerB < 0) return -1;
-                return (duel.activeSide == 0) ? duel.playerA : duel.playerB;
-            }
 
             default: return -1;
         }
@@ -543,15 +818,29 @@ namespace ReyesCuadra
 
     static int PhaseSignature(const GameState& game)
     {
-        const Duel& duel = game.duels[game.currentDuel];
-
         return static_cast<int>(game.phase) * 100000
              + game.currentPlayer * 10000
              + game.enemy.turnsLeft * 1000
              + game.enemyTarget * 200
-             + duel.rollsPlayed * 10
-             + duel.activeSide
-             + game.currentDuel;
+             + game.currentStage;
+    }
+
+    // La CPU gasta un ítem cuando la tirada que viene lo pide: el amuleto si
+    // la dificultad le queda lejos, la piedra si está por rematar una parte y
+    // la poción si arrastra maldiciones.
+    static void CpuMaybeUseItem(GameState& game, bool isFight)
+    {
+        const Player& player = game.players[game.currentPlayer];
+        if (player.items.empty()) return;
+
+        int difficulty = isFight
+                       ? GetPartDifficulty(game.enemy, game.enemyTarget, player.path, game.currentStage)
+                       : GetEventDifficulty(player.path, game.currentStage);
+
+        int wanted = CpuChooseItem(player, difficulty, isFight,
+                                   isFight ? game.enemy.parts[game.enemyTarget].woundsLeft : 0);
+
+        if (wanted >= 0) UseItem(game, wanted);
     }
 
     static void RunCpuTurn(GameState& game)
@@ -569,11 +858,14 @@ namespace ReyesCuadra
                 AddLog(game, TextFormat("Jugador %i [CPU] toma el camino %s",
                                         game.currentPlayer + 1, GetPathName(chosen)));
 
-                if (StageHasEnemy(game.currentStage)) StartEnemyFight(game);
-                else                                  game.phase = GamePhase::EventRoll;
+                EnterTile(game);
             } break;
 
-            case GamePhase::EventRoll:   StartEventRoll(game); break;
+            case GamePhase::EventRoll:
+            {
+                CpuMaybeUseItem(game, false);
+                StartEventRoll(game);
+            } break;
             case GamePhase::EventChoice: AdvanceEventChoice(game, CpuChooseOption(game.eventSession.choice)); break;
             case GamePhase::EventResult: OfferCards(game); break;
 
@@ -581,8 +873,9 @@ namespace ReyesCuadra
 
             case GamePhase::EnemyTarget:
             {
-                const Player& player = game.players[game.currentPlayer];
-                game.enemyTarget = CpuChoosePart(game.enemy, player.path, game.currentStage);
+                game.enemyTarget = CpuChoosePart(game.players[game.currentPlayer],
+                                                 game.enemy, game.currentStage);
+                CpuMaybeUseItem(game, true);
                 StartEnemyRoll(game);
             } break;
 
@@ -603,15 +896,33 @@ namespace ReyesCuadra
                 }
             } break;
 
-            case GamePhase::EnemyOutcome: OfferCards(game); break;
+            case GamePhase::EnemyOutcome: ResolveEnemyOutcome(game); break;
+
+            case GamePhase::TreasureResult:
+            case GamePhase::RestResult:
+                AdvanceTurn(game);
+                break;
+
+            case GamePhase::OptionalOffer:
+            {
+                const Player& player = game.players[game.currentPlayer];
+
+                if (CpuTakesOptionalFight(player))
+                {
+                    AddLog(game, TextFormat("Jugador %i [CPU] acepta la batalla opcional",
+                                            game.currentPlayer + 1));
+                    StartEnemyFight(game);
+                }
+                else
+                {
+                    AddLog(game, TextFormat("Jugador %i [CPU] pasa de largo",
+                                            game.currentPlayer + 1));
+                    AdvanceTurn(game);
+                }
+            } break;
 
             case GamePhase::CardSelection:
                 TakeCard(game, CpuChooseCard(game.cardOptions, game.cardOptionCount));
-                break;
-
-            case GamePhase::CombatRoll:   StepCombat(game, -1); break;
-            case GamePhase::CombatChoice:
-                StepCombat(game, CpuChooseOption(game.duels[game.currentDuel].session.choice));
                 break;
 
             default: break;
@@ -675,6 +986,21 @@ namespace ReyesCuadra
 
         if (GetTime() < game.revealUntil) return;
 
+        // La mochila se abre con [I] en los momentos en los que un ítem sirve:
+        // antes de tirar en un evento y antes de pegarle a un enemigo.
+        bool canOpenItems = (game.phase == GamePhase::EventRoll ||
+                             game.phase == GamePhase::EnemyTarget) &&
+                            !game.players[game.currentPlayer].isCpu &&
+                            !game.players[game.currentPlayer].items.empty();
+
+        if (canOpenItems && IsKeyPressed(KEY_I))
+        {
+            PlaySfx(SoundId::Select);
+            game.itemReturnPhase = game.phase;
+            game.phase           = GamePhase::ItemMenu;
+            return;
+        }
+
         int signature = PhaseSignature(game);
         if (signature != game.cpuSignature)
         {
@@ -695,6 +1021,23 @@ namespace ReyesCuadra
                 if (IsKeyPressed(KEY_ENTER))
                 {
                     PlaySfx(SoundId::Select);
+                    game.phase = GamePhase::CharacterSelect;
+                }
+            } break;
+
+            case GamePhase::CharacterSelect:
+            {
+                int option = ReadOptionKey(static_cast<int>(CharacterId::Count));
+
+                if (option >= 0)
+                {
+                    PlaySfx(SoundId::Select);
+                    game.menuCharacter = static_cast<CharacterId>(option);
+                }
+
+                if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE))
+                {
+                    PlaySfx(SoundId::Card);
                     StartMatch(game);
                     game.phase = GamePhase::TurnOrder;
                 }
@@ -730,9 +1073,7 @@ namespace ReyesCuadra
                 {
                     PlaySfx(SoundId::Card);
                     game.players[game.currentPlayer].path = game.pathPreview;
-
-                    if (StageHasEnemy(game.currentStage)) StartEnemyFight(game);
-                    else                                  game.phase = GamePhase::EventRoll;
+                    EnterTile(game);
                 }
             } break;
 
@@ -786,7 +1127,7 @@ namespace ReyesCuadra
 
             case GamePhase::EnemyOutcome:
             {
-                if (IsKeyPressed(KEY_SPACE)) OfferCards(game);
+                if (IsKeyPressed(KEY_SPACE)) ResolveEnemyOutcome(game);
             } break;
 
             case GamePhase::EventChoice:
@@ -806,70 +1147,43 @@ namespace ReyesCuadra
                 if (option >= 0) TakeCard(game, option);
             } break;
 
-            case GamePhase::Initiative:
+            case GamePhase::OptionalOffer:
             {
-                if (IsKeyPressed(KEY_SPACE))
+                int option = ReadOptionKey(2);
+
+                if (option == 0)
                 {
-                    PlaySfx(SoundId::Dice);
-                    PlayTrack(MusicTrack::Combat);
-
-                    RollInitiative(game.players, game.initiativeOrder);
-                    BuildBracket(game.initiativeOrder, game.duels);
-
-                    AddLog(game, TextFormat("Iniciativa: J%i(%i) J%i(%i) J%i(%i) J%i(%i)",
-                        game.initiativeOrder[0] + 1, game.players[game.initiativeOrder[0]].initiativeRoll,
-                        game.initiativeOrder[1] + 1, game.players[game.initiativeOrder[1]].initiativeRoll,
-                        game.initiativeOrder[2] + 1, game.players[game.initiativeOrder[2]].initiativeRoll,
-                        game.initiativeOrder[3] + 1, game.players[game.initiativeOrder[3]].initiativeRoll));
-
-                    game.currentDuel = 0;
-                    game.phase = GamePhase::InitiativeResult;
+                    PlaySfx(SoundId::Select);
+                    StartEnemyFight(game);
+                }
+                else if (option == 1)
+                {
+                    PlaySfx(SoundId::Select);
+                    AddLog(game, TextFormat("Jugador %i pasa de largo la batalla opcional",
+                                            game.currentPlayer + 1));
+                    AdvanceTurn(game);
                 }
             } break;
 
-            case GamePhase::InitiativeResult:
+            case GamePhase::TreasureResult:
+            case GamePhase::RestResult:
             {
-                if (IsKeyPressed(KEY_SPACE)) game.phase = GamePhase::CombatIntro;
+                if (IsKeyPressed(KEY_SPACE)) AdvanceTurn(game);
             } break;
 
-            case GamePhase::CombatIntro:
+            case GamePhase::ItemMenu:
             {
-                if (IsKeyPressed(KEY_SPACE))
+                if (IsKeyPressed(KEY_I) || IsKeyPressed(KEY_TAB))
                 {
-                    StartDuel(game.duels[game.currentDuel], game.players);
-                    game.phase = GamePhase::CombatRoll;
+                    game.phase = game.itemReturnPhase;
+                    break;
                 }
-            } break;
 
-            case GamePhase::CombatRoll:
-            {
-                if (IsKeyPressed(KEY_SPACE)) StepCombat(game, -1);
-            } break;
+                int option = ReadOptionKey(static_cast<int>(game.players[game.currentPlayer].items.size()));
 
-            case GamePhase::CombatChoice:
-            {
-                const Duel& duel = game.duels[game.currentDuel];
-                int option = ReadOptionKey(static_cast<int>(duel.session.choice.options.size()));
-                if (option >= 0) StepCombat(game, option);
-            } break;
-
-            case GamePhase::CombatResult:
-            {
-                if (IsKeyPressed(KEY_SPACE))
+                if (option >= 0 && UseItem(game, option))
                 {
-                    if (game.duels[game.currentDuel].isFinal)
-                    {
-                        game.kingId = game.duels[game.currentDuel].winner;
-                        StopTrack();
-                        PlaySfx(SoundId::Victory);
-                        game.phase  = GamePhase::Victory;
-                    }
-                    else
-                    {
-                        ++game.currentDuel;
-                        if (game.currentDuel == 2) BuildSecondRound(game.duels);
-                        game.phase = GamePhase::CombatIntro;
-                    }
+                    game.phase = game.itemReturnPhase;
                 }
             } break;
 
@@ -878,8 +1192,7 @@ namespace ReyesCuadra
                 if (IsKeyPressed(KEY_R))
                 {
                     PlaySfx(SoundId::Select);
-                    StartMatch(game);
-                    game.phase = GamePhase::TurnOrder;
+                    game.phase = GamePhase::CharacterSelect;
                 }
             } break;
         }
@@ -891,11 +1204,6 @@ namespace ReyesCuadra
     {
         return player.isCpu ? TextFormat("Jugador %i [CPU]", player.id + 1)
                             : TextFormat("Jugador %i", player.id + 1);
-    }
-
-    static bool IsCpuPlaying(const GameState& game, int actor)
-    {
-        return actor >= 0 && game.players[actor].isCpu;
     }
 
     static Rectangle WidePanelBounds()
@@ -1087,109 +1395,110 @@ namespace ReyesCuadra
         }
     }
 
+    // Las tres opciones salen como cartas de verdad, lado a lado, que es lo
+    // que pide el documento: nada de renglones de lista.
     static void DrawCardOptionsUI(const GameState& game)
     {
-        Rectangle panel = WidePanelBounds();
+        float time = static_cast<float>(GetTime());
 
-        for (int i = 0; i < game.cardOptionCount; ++i)
+        constexpr float CARD_W = 296.0f;
+        constexpr float CARD_H = 384.0f;
+        constexpr float CARD_Y = 182.0f;
+        constexpr float CARD_GAP = 20.0f;
+
+        int count = game.cardOptionCount;
+        if (count <= 0) return;
+
+        float totalW = count * CARD_W + (count - 1) * CARD_GAP;
+        float firstX = SCREEN_WIDTH * 0.5f - totalW * 0.5f;
+
+        const Player& player = game.players[game.currentPlayer];
+
+        UiTextCentered(TextFormat("%s: elegí una %s", PlayerLabel(player),
+                                  game.offerKind == CardKind::Blessing ? "bendición" : "maldición"),
+                       SCREEN_WIDTH / 2, 118, 28, COL_CREAM, FontStyle::Bold);
+
+        UiTextCentered("las tres vienen del mazo que te tocó por el camino",
+                       SCREEN_WIDTH / 2, 154, 16, Fade(COL_CREAM, 0.6f));
+
+        for (int i = 0; i < count; ++i)
         {
             const CardDef& def = GetCardDef(game.cardOptions[i]);
 
-            bool isBlessing = (def.kind == CardKind::Blessing);
-            Color color = isBlessing ? COL_BLESSING : COL_CURSE;
+            bool  isBlessing = (def.kind == CardKind::Blessing);
+            Color color      = isBlessing ? COL_BLESSING : COL_CURSE;
             Color levelColor = GetPathColor(static_cast<PathKind>(static_cast<int>(def.level)));
 
-            Rectangle bounds{ panel.x + 14.0f, panel.y + 44.0f + static_cast<float>(i) * 72.0f,
-                              panel.width - 28.0f, 66.0f };
+            float lift = 3.0f * Pulse(time + static_cast<float>(i) * 0.6f, 1.4f);
 
-            DrawRectangleRounded(bounds, 0.16f, 6, Fade(COL_INK_DEEP, 0.75f));
-            DrawRectangleRounded(Rectangle{ bounds.x, bounds.y, bounds.width, 26.0f }, 0.5f, 6,
-                                 Fade(color, 0.28f));
-            DrawRectangleRoundedLinesEx(bounds, 0.16f, 6, 2.0f, Fade(color, 0.85f));
-            DrawRectangleRounded(Rectangle{ bounds.x + 6.0f, bounds.y + 6.0f, 6.0f, bounds.height - 12.0f },
-                                 0.8f, 4, levelColor);
+            Rectangle card{ firstX + static_cast<float>(i) * (CARD_W + CARD_GAP),
+                            CARD_Y - lift, CARD_W, CARD_H };
 
-            UiText(TextFormat("[%i]", i + 1),
-                   static_cast<int>(bounds.x) + 20, static_cast<int>(bounds.y) + 4, 17,
-                   COL_CREAM, FontStyle::Bold);
+            Rectangle shadow = card;
+            shadow.x += 5.0f; shadow.y += 9.0f;
+            DrawRectangleRounded(shadow, 0.07f, 8, Fade(BLACK, 0.45f));
 
-            UiText(def.name,
-                   static_cast<int>(bounds.x) + 58, static_cast<int>(bounds.y) + 3, 19, color, FontStyle::Bold);
+            DrawRectangleRounded(card, 0.07f, 8, Color{ 26, 36, 64, 255 });
+            DrawRectangleRoundedLinesEx(card, 0.07f, 8, 3.0f, Fade(color, 0.9f));
+
+            // Cabecera de la carta con el tipo y la rareza.
+            Rectangle head{ card.x + 10.0f, card.y + 10.0f, card.width - 20.0f, 46.0f };
+            DrawRectangleRounded(head, 0.25f, 6, Fade(color, 0.25f));
+            DrawRectangleRounded(Rectangle{ head.x, head.y, 7.0f, head.height }, 0.6f, 4, levelColor);
+
+            UiText(isBlessing ? "BENDICIÓN" : "MALDICIÓN",
+                   static_cast<int>(head.x) + 18, static_cast<int>(head.y) + 6, 15,
+                   color, FontStyle::Bold);
 
             UiText(GetCardLevelName(def.level),
-                   static_cast<int>(bounds.x + bounds.width) - 110, static_cast<int>(bounds.y) + 6, 15,
-                   Fade(levelColor, 0.9f), FontStyle::Bold);
+                   static_cast<int>(head.x) + 18, static_cast<int>(head.y) + 25, 14,
+                   Fade(levelColor, 0.95f), FontStyle::Bold);
 
-            UiTextWrapped(def.text,
-                          static_cast<int>(bounds.x) + 20, static_cast<int>(bounds.y) + 32,
-                          static_cast<int>(bounds.width) - 40, 16, COL_CREAM, 2);
-        }
-    }
+            // Ilustración de relleno: un rombo con el símbolo del tipo. Es a
+            // propósito simple, hasta que el grupo defina el arte.
+            Rectangle art{ card.x + 10.0f, head.y + head.height + 10.0f, card.width - 20.0f, 120.0f };
+            DrawRectangleRounded(art, 0.1f, 6, Fade(COL_INK_DEEP, 0.75f));
+            DrawRectangleRoundedLinesEx(art, 0.1f, 6, 1.0f, Fade(color, 0.35f));
 
-    static void DrawCombatPips(const Duel& duel, int x, int y, const GameState& game)
-    {
-        for (int i = 0; i < COMBAT_ROLLS; ++i)
-        {
-            int cx = x + i * 26;
-            Color color = Fade(COL_CREAM, 0.18f);
+            float cx = art.x + art.width * 0.5f;
+            float cy = art.y + art.height * 0.5f;
 
-            if (i < duel.rollsPlayed)
+            DrawCircleV(Vector2{ cx, cy }, 40.0f, Fade(color, 0.12f));
+
+            if (isBlessing)
             {
-                if (duel.outcomes[i] > 0)      color = game.players[duel.playerA].color;
-                else if (duel.outcomes[i] < 0) color = game.players[duel.playerB].color;
-                else                           color = Fade(COL_CREAM, 0.45f);
+                DrawCrown(static_cast<int>(cx), static_cast<int>(cy) + 6, 44.0f, Fade(color, 0.85f));
+            }
+            else
+            {
+                DrawTriangle(Vector2{ cx, cy - 30.0f },
+                             Vector2{ cx - 28.0f, cy + 20.0f },
+                             Vector2{ cx + 28.0f, cy + 20.0f }, Fade(color, 0.85f));
+                DrawRectangle(static_cast<int>(cx) - 3, static_cast<int>(cy) - 12, 6, 20, COL_INK_DEEP);
+                DrawRectangle(static_cast<int>(cx) - 3, static_cast<int>(cy) + 12, 6, 5, COL_INK_DEEP);
             }
 
-            DrawCircle(cx, y, 8.0f, color);
-            DrawCircleLines(cx, y, 8.0f, Fade(COL_INK_DEEP, 0.8f));
-        }
-    }
+            UiTextWrapped(def.name, static_cast<int>(card.x) + 20,
+                          static_cast<int>(art.y + art.height) + 14,
+                          static_cast<int>(card.width) - 40, 22, color, 2, FontStyle::Bold);
 
-    static void DrawCombatRolls(const GameState& game, const Duel& duel, int textX, int line1, int line2, int line3)
-    {
-        bool revealing = IsRevealing(game);
-        int shown = duel.rollsPlayed;
+            UiTextWrapped(def.text, static_cast<int>(card.x) + 20,
+                          static_cast<int>(art.y + art.height) + 66,
+                          static_cast<int>(card.width) - 40, 16, Fade(COL_CREAM, 0.9f), 6);
 
-        UiText(PlayerLabel(game.players[duel.playerA]), textX, line1, 18,
-               game.players[duel.playerA].color, FontStyle::Bold);
-        UiText(PlayerLabel(game.players[duel.playerB]), textX, line2, 18,
-               game.players[duel.playerB].color, FontStyle::Bold);
+            // El número de la tecla, abajo y bien grande.
+            Rectangle key{ card.x + card.width * 0.5f - 26.0f, card.y + card.height - 46.0f,
+                           52.0f, 34.0f };
+            DrawRectangleRounded(key, 0.4f, 6, Fade(COL_GOLD, 0.22f));
+            DrawRectangleRoundedLinesEx(key, 0.4f, 6, 2.0f, Fade(COL_GOLD, 0.8f));
 
-        for (int i = 0; i < shown; ++i)
-        {
-            int x = textX + 162 + i * 42;
-
-            const DiceRoll& a = duel.rollsA[i];
-            const DiceRoll& b = duel.rollsB[i];
-
-            bool wonA = (duel.outcomes[i] > 0);
-            bool wonB = (duel.outcomes[i] < 0);
-
-            if (wonA || wonB)
-            {
-                int y = wonA ? line1 : line2;
-                DrawRectangleRounded(Rectangle{ static_cast<float>(x) - 7.0f, static_cast<float>(y) - 4.0f,
-                                                38.0f, 28.0f }, 0.4f, 6, Fade(COL_GOLD, 0.22f));
-            }
-
-            const char* textA = TextFormat("%i%s", a.total, a.criticalHit ? "!" : (a.criticalFail ? "?" : ""));
-            const char* textB = TextFormat("%i%s", b.total, b.criticalHit ? "!" : (b.criticalFail ? "?" : ""));
-
-            UiText(textA, x, line1, 19, wonA ? COL_GOLD : Fade(COL_CREAM, 0.55f), FontStyle::Bold);
-            UiText(textB, x, line2, 19, wonB ? COL_GOLD : Fade(COL_CREAM, 0.55f), FontStyle::Bold);
+            UiTextCentered(TextFormat("%i", i + 1),
+                           static_cast<int>(key.x + key.width * 0.5f),
+                           static_cast<int>(key.y) + 5, 23, COL_GOLD, FontStyle::Bold);
         }
 
-        DrawCombatPips(duel, textX + 330, line3 + 22, game);
-
-        if (revealing && !duel.resolved)
-        {
-            int side = duel.activeSide;
-            int lineY = (side == 0) ? line2 : line1;
-            int value = SpinningValue(static_cast<float>(GetTime()), DICE_FACES);
-            DrawDie(textX + 544, lineY - 6, 34, value, true, COL_GOLD);
-        }
-
-        UiText("! = 20 natural      ? = 1 natural", textX, line3 + 6, 14, Fade(COL_CREAM, 0.5f));
+        UiTextCentered(TextFormat("[1-%i] quedarte con una", count),
+                       SCREEN_WIDTH / 2, 600, 20, COL_GOLD, FontStyle::Bold);
     }
 
     static bool IsEnemyPhase(const GameState& game)
@@ -1444,6 +1753,65 @@ namespace ReyesCuadra
                 }
             } break;
 
+            case GamePhase::OptionalOffer:
+            {
+                DrawPanel(bounds, "BATALLA OPCIONAL");
+
+                UiText("Hay un enemigo que podés esquivar.", textX, line1, 19,
+                       COL_CREAM, FontStyle::Bold);
+
+                UiText("Si peleás y ganás te llevás un ítem, no una carta.",
+                       textX, line2, 16, Fade(COL_CREAM, 0.85f));
+                UiText("Si perdés, maldición igual que en cualquier combate.",
+                       textX, line2 + 24, 16, Fade(COL_CREAM, 0.85f));
+                UiText("Si pasás de largo no gana ni pierde nadie.",
+                       textX, line2 + 48, 16, Fade(COL_CREAM, 0.85f));
+
+                if (player.isCpu)
+                {
+                    UiText("La CPU lo está pensando...", textX, line4 + 84, 19,
+                           Fade(COL_CREAM, 0.7f), FontStyle::Bold);
+                }
+                else
+                {
+                    UiText("[1] pelear", textX, line4 + 78, 21, COL_GOLD, FontStyle::Bold);
+                    UiText("[2] pasar de largo", textX + 160, line4 + 78, 21,
+                           Fade(COL_CREAM, 0.8f), FontStyle::Bold);
+                }
+            } break;
+
+            case GamePhase::TreasureResult:
+            {
+                DrawPanel(bounds, "TESORO");
+
+                UiTextWrapped(game.tileNote.c_str(), textX, line1,
+                              static_cast<int>(PANEL_W) - 48, 20, COL_GOLD, 2, FontStyle::Bold);
+
+                UiText("Los ítems se usan a mano con [I] antes de tirar.",
+                       textX, line3, 16, Fade(COL_CREAM, 0.75f));
+
+                if (!player.isCpu)
+                {
+                    UiText("[ESPACIO] seguir", textX, line4 + 84, 20, COL_GOLD, FontStyle::Bold);
+                }
+            } break;
+
+            case GamePhase::RestResult:
+            {
+                DrawPanel(bounds, "DESCANSO");
+
+                UiTextWrapped(game.tileNote.c_str(), textX, line1,
+                              static_cast<int>(PANEL_W) - 48, 20, COL_BLESSING, 2, FontStyle::Bold);
+
+                UiText("En esta casilla no se tira el dado ni se reparten cartas.",
+                       textX, line3, 16, Fade(COL_CREAM, 0.75f));
+
+                if (!player.isCpu)
+                {
+                    UiText("[ESPACIO] seguir", textX, line4 + 84, 20, COL_GOLD, FontStyle::Bold);
+                }
+            } break;
+
             case GamePhase::EnemyIntro:
             {
                 DrawPanel(bounds, TextFormat("%s  ·  ETAPA %i / %i",
@@ -1496,8 +1864,10 @@ namespace ReyesCuadra
                        textX, line2, 18, COL_GOLD, FontStyle::Bold);
 
                 RollRequest request;
-                request.isCombat  = false;
-                request.rollIndex = -1;
+                // El preview tiene que preguntar por lo mismo que la tirada real:
+                // los combates contra enemigos cuentan como combate.
+                request.isCombat  = true;
+                request.rollIndex = game.enemyMemory.rollsPlayed;
 
                 std::string pending = DescribePendingEffects(player, nullptr, request);
 
@@ -1617,114 +1987,7 @@ namespace ReyesCuadra
 
             case GamePhase::CardSelection:
             {
-                DrawPanel(WidePanelBounds(),
-                          TextFormat("%s: elegí una %s", PlayerLabel(player),
-                                     game.offerKind == CardKind::Blessing ? "bendición" : "maldición"));
-
                 DrawCardOptionsUI(game);
-            } break;
-
-            case GamePhase::Initiative:
-            {
-                DrawPanel(bounds, "FASE DE COMBATE");
-                UiText("Los cuatro jugadores llegaron a la cima.", textX, line1, 18, COL_CREAM);
-                UiText("La iniciativa define los cruces del torneo.", textX, line2, 16, Fade(COL_CREAM, 0.75f));
-                UiText("[ESPACIO] tirar iniciativa", textX, line4 + 12, 20, COL_GOLD, FontStyle::Bold);
-            } break;
-
-            case GamePhase::InitiativeResult:
-            {
-                DrawPanel(bounds, "CRUCES DEL TORNEO");
-
-                UiText(TextFormat("Semifinal 1:  Jugador %i  vs  Jugador %i",
-                                  game.duels[0].playerA + 1, game.duels[0].playerB + 1),
-                       textX, line1, 18, COL_CREAM);
-
-                UiText(TextFormat("Semifinal 2:  Jugador %i  vs  Jugador %i",
-                                  game.duels[1].playerA + 1, game.duels[1].playerB + 1),
-                       textX, line2, 18, COL_CREAM);
-
-                UiText("Después juegan los dos perdedores y, al final, los dos ganadores.",
-                       textX, line3, 15, Fade(COL_CREAM, 0.75f));
-
-                UiText("[ESPACIO] continuar", textX, line4 + 12, 20, COL_GOLD, FontStyle::Bold);
-            } break;
-
-            case GamePhase::CombatIntro:
-            {
-                const Duel& duel = game.duels[game.currentDuel];
-
-                DrawPanel(bounds, duel.isFinal ? "BATALLA FINAL" : "COMBATE");
-
-                UiText(GetDuelTitle(duel), textX, line1, 23, COL_CREAM, FontStyle::Bold);
-                UiText(TextFormat("Al mejor de %i tiradas.", COMBAT_ROLLS),
-                       textX, line2 + 8, 16, Fade(COL_CREAM, 0.75f));
-
-                UiText(TextFormat("Cartas sin usar:  J%i tiene %i    ·    J%i tiene %i",
-                                  duel.playerA + 1, CountPendingCards(game.players[duel.playerA]),
-                                  duel.playerB + 1, CountPendingCards(game.players[duel.playerB])),
-                       textX, line3 + 8, 16, Fade(COL_CREAM, 0.75f));
-
-                UiText("[ESPACIO] empezar el combate", textX, line4 + 12, 20, COL_GOLD, FontStyle::Bold);
-            } break;
-
-            case GamePhase::CombatRoll:
-            {
-                const Duel& duel = game.duels[game.currentDuel];
-                int who = (duel.activeSide == 0) ? duel.playerA : duel.playerB;
-
-                DrawPanel(bounds, TextFormat("COMBATE  ·  TIRADA %i", duel.rollsPlayed + 1));
-
-                DrawCombatRolls(game, duel, textX, line1, line2, line3);
-
-                if (!IsRevealing(game))
-                {
-                    if (IsCpuPlaying(game, who))
-                    {
-                        UiText(TextFormat("Tira la CPU (Jugador %i)...", who + 1),
-                               textX, line4 + 12, 20, Fade(COL_CREAM, 0.75f), FontStyle::Bold);
-                    }
-                    else
-                    {
-                        UiText(TextFormat("[ESPACIO] tira el Jugador %i", who + 1),
-                               textX, line4 + 12, 20, COL_GOLD, FontStyle::Bold);
-                    }
-                }
-            } break;
-
-            case GamePhase::CombatChoice:
-            {
-                DrawChoice(game.duels[game.currentDuel].session.choice);
-            } break;
-
-            case GamePhase::CombatResult:
-            {
-                const Duel& duel = game.duels[game.currentDuel];
-
-                DrawPanel(bounds, TextFormat("GANA EL JUGADOR %i   (%i - %i)",
-                                             duel.winner + 1,
-                                             (duel.winner == duel.playerA) ? duel.winsA : duel.winsB,
-                                             (duel.winner == duel.playerA) ? duel.winsB : duel.winsA));
-
-                DrawCombatRolls(game, duel, textX, line1, line2, line3);
-
-                std::string effects = duel.effectsA;
-                if (!duel.effectsB.empty())
-                {
-                    if (!effects.empty()) effects += ", ";
-                    effects += duel.effectsB;
-                }
-
-                if (!effects.empty())
-                {
-                    UiTextWrapped(TextFormat("Cartas aplicadas: %s", effects.c_str()),
-                                  textX, line3 + 26, static_cast<int>(PANEL_W) - 32, 15, COL_GOLD, 2);
-                }
-
-                if (!IsRevealing(game))
-                {
-                    UiText("[ESPACIO] continuar", textX, line4 + 12, 20, COL_GOLD, FontStyle::Bold);
-                }
             } break;
 
             default: break;
@@ -1753,7 +2016,7 @@ namespace ReyesCuadra
 
         DrawTitle(SCREEN_WIDTH / 2, 150, 56);
 
-        UiTextCentered("versión base  ·  un jugador contra tres rivales de la CPU",
+        UiTextCentered("roguelite de un jugador  ·  tres rivales de la CPU suben con vos",
                        SCREEN_WIDTH / 2, 222, 19, Fade(COL_CREAM, 0.75f));
 
         Rectangle card{ SCREEN_WIDTH / 2.0f - 350.0f, 258.0f, 700.0f, 248.0f };
@@ -1764,12 +2027,12 @@ namespace ReyesCuadra
 
         const char* rules[] =
         {
-            "En cada etapa elegís uno de los tres caminos: fácil, normal o difícil.",
-            "Etapas 1, 3 y 5: tirás un D20 contra la dificultad del evento.",
-            "Etapas 2, 4 y 6: te cruzás con un enemigo y lo atacás por partes.",
+            "Elegís personaje y subís la montaña por uno de los tres caminos.",
+            "Cada casilla es distinta: evento, enemigo, tesoro, descanso u opcional.",
+            "Tirás un D20 contra la dificultad; el 20 y el 1 naturales deciden solos.",
             "Si salís bien elegís una bendición; si no, recibís una maldición.",
-            "Las cartas se activan solas en la tirada que indica su texto.",
-            "En la cima se juega el torneo: combates al mejor de 3 tiradas."
+            "A los enemigos los atacás por partes, eligiendo dónde pegar.",
+            "En la cima está el jefe final: ganarle es llevarse la corona."
         };
 
         for (int i = 0; i < 6; ++i)
@@ -1784,19 +2047,171 @@ namespace ReyesCuadra
 
         float glow = 0.75f + 0.25f * Pulse(time, 2.4f);
         UiTextCentered("[ENTER] comenzar", SCREEN_WIDTH / 2, 572, 28, Fade(COL_GOLD, glow), FontStyle::Bold);
-        UiTextCentered("[F11] pantalla completa   ·   [TAB] ver las cartas   ·   [M] silenciar",
+        UiTextCentered("[F11] pantalla completa   ·   [TAB] cartas   ·   [I] mochila   ·   [M] silenciar",
                        SCREEN_WIDTH / 2, 622, 14, Fade(COL_CREAM, 0.45f));
+    }
+
+    // El orden final sale del jefe de la cima: primero los que le ganaron,
+    // ordenados por cuánto le sacaron, y después los que no llegaron.
+    static void DrawCharacterSelect(const GameState& game)
+    {
+        float time = static_cast<float>(GetTime());
+
+        Rectangle band{ 0.0f, 0.0f, static_cast<float>(SCREEN_WIDTH), 96.0f };
+        DrawRectangleRec(band, COL_MAGENTA);
+        DrawWaveBand(band, Fade(COL_INK_DEEP, 0.55f), time, 4);
+
+        UiTextCentered("ELEGÍ TU PERSONAJE", SCREEN_WIDTH / 2, 34, 30, COL_CREAM, FontStyle::Bold);
+
+        UiTextCentered("los tres suben la misma montaña, cambia con qué arrancan",
+                       SCREEN_WIDTH / 2, 118, 17, Fade(COL_CREAM, 0.7f));
+
+        constexpr float CARD_W = 300.0f;
+        constexpr float CARD_H = 348.0f;
+        constexpr float CARD_Y = 164.0f;
+        constexpr float CARD_GAP = 24.0f;
+
+        int count = static_cast<int>(CharacterId::Count);
+        float totalW = count * CARD_W + (count - 1) * CARD_GAP;
+        float firstX = SCREEN_WIDTH * 0.5f - totalW * 0.5f;
+
+        for (int i = 0; i < count; ++i)
+        {
+            const CharacterDef& def = GetCharacterDef(static_cast<CharacterId>(i));
+            bool selected = (static_cast<int>(game.menuCharacter) == i);
+
+            float lift = selected ? 8.0f + 3.0f * Pulse(time, 2.0f) : 0.0f;
+
+            Rectangle card{ firstX + static_cast<float>(i) * (CARD_W + CARD_GAP),
+                            CARD_Y - lift, CARD_W, CARD_H };
+
+            Rectangle shadow = card;
+            shadow.x += 5.0f; shadow.y += 9.0f;
+            DrawRectangleRounded(shadow, 0.08f, 8, Fade(BLACK, 0.45f));
+
+            DrawRectangleRounded(card, 0.08f, 8, Color{ 26, 36, 64, 255 });
+            DrawRectangleRoundedLinesEx(card, 0.08f, 8, selected ? 4.0f : 2.0f,
+                                        selected ? COL_GOLD : Fade(def.color, 0.7f));
+
+            // Retrato de relleno: un escudo con la inicial. Simple a propósito.
+            Rectangle art{ card.x + 14.0f, card.y + 14.0f, card.width - 28.0f, 150.0f };
+            DrawRectangleRounded(art, 0.1f, 6, Fade(def.color, 0.14f));
+
+            float cx = art.x + art.width * 0.5f;
+            float cy = art.y + art.height * 0.5f;
+
+            DrawCircleV(Vector2{ cx, cy }, 50.0f, Fade(def.color, 0.22f));
+            DrawCircleV(Vector2{ cx, cy }, 42.0f, Fade(COL_INK_DEEP, 0.7f));
+            DrawCircleLines(static_cast<int>(cx), static_cast<int>(cy), 50.0f, Fade(def.color, 0.9f));
+
+            UiTextCentered(TextFormat("%c", def.name[3]), static_cast<int>(cx),
+                           static_cast<int>(cy) - 26, 54, def.color, FontStyle::Bold);
+
+            UiTextCentered(def.name, static_cast<int>(card.x + card.width * 0.5f),
+                           static_cast<int>(art.y + art.height) + 16, 22, COL_CREAM, FontStyle::Bold);
+
+            UiTextCentered(def.title, static_cast<int>(card.x + card.width * 0.5f),
+                           static_cast<int>(art.y + art.height) + 44, 15,
+                           Fade(COL_CREAM, 0.6f));
+
+            UiTextWrapped(def.passive, static_cast<int>(card.x) + 22,
+                          static_cast<int>(art.y + art.height) + 76,
+                          static_cast<int>(card.width) - 44, 17,
+                          Fade(def.color, 0.95f), 3, FontStyle::Bold);
+
+            Rectangle key{ card.x + card.width * 0.5f - 24.0f, card.y + card.height - 44.0f,
+                           48.0f, 32.0f };
+            DrawRectangleRounded(key, 0.4f, 6, Fade(COL_GOLD, selected ? 0.3f : 0.15f));
+            DrawRectangleRoundedLinesEx(key, 0.4f, 6, 2.0f, Fade(COL_GOLD, selected ? 0.9f : 0.5f));
+
+            UiTextCentered(TextFormat("%i", i + 1),
+                           static_cast<int>(key.x + key.width * 0.5f),
+                           static_cast<int>(key.y) + 4, 22, COL_GOLD, FontStyle::Bold);
+        }
+
+        float glow = 0.75f + 0.25f * Pulse(time, 2.4f);
+        UiTextCentered("[1-3] elegir      [ENTER] empezar la subida",
+                       SCREEN_WIDTH / 2, 566, 24, Fade(COL_GOLD, glow), FontStyle::Bold);
+        UiTextCentered(CREDITS_LINE, SCREEN_WIDTH / 2, 648, 15, Fade(COL_CREAM, 0.45f));
+    }
+
+    static void DrawItemMenu(const GameState& game)
+    {
+        DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(COL_INK_DEEP, 0.85f));
+
+        const Player& player = game.players[game.currentPlayer];
+
+        Rectangle panel{ 300.0f, 150.0f, 680.0f, 420.0f };
+        DrawSoftPanel(panel, PANEL_COLOR, PANEL_BORDER, 0.05f);
+
+        Rectangle header{ panel.x, panel.y, panel.width, 40.0f };
+        DrawRectangleRounded(header, 0.3f, 6, Fade(COL_MAGENTA, 0.4f));
+
+        UiText("MOCHILA", static_cast<int>(panel.x) + 20, static_cast<int>(panel.y) + 10, 21,
+               COL_CREAM, FontStyle::Bold);
+
+        UiText("[I] cerrar", static_cast<int>(panel.x + panel.width) - 110,
+               static_cast<int>(panel.y) + 13, 16, Fade(COL_CREAM, 0.8f));
+
+        int count = static_cast<int>(player.items.size());
+
+        if (count <= 0)
+        {
+            UiText("No tenés ningún ítem todavía.", static_cast<int>(panel.x) + 24,
+                   static_cast<int>(panel.y) + 70, 19, Fade(COL_CREAM, 0.6f));
+            return;
+        }
+
+        for (int i = 0; i < count; ++i)
+        {
+            const ItemDef& def = GetItemDef(player.items[i]);
+
+            Rectangle row{ panel.x + 16.0f, panel.y + 58.0f + static_cast<float>(i) * 76.0f,
+                           panel.width - 32.0f, 68.0f };
+
+            DrawRectangleRounded(row, 0.16f, 6, Fade(COL_INK_DEEP, 0.7f));
+            DrawRectangleRoundedLinesEx(row, 0.16f, 6, 2.0f, Fade(COL_GOLD, 0.7f));
+
+            UiText(TextFormat("[%i]", i + 1), static_cast<int>(row.x) + 18,
+                   static_cast<int>(row.y) + 10, 19, COL_GOLD, FontStyle::Bold);
+
+            UiText(def.name, static_cast<int>(row.x) + 64, static_cast<int>(row.y) + 9, 20,
+                   COL_CREAM, FontStyle::Bold);
+
+            UiTextWrapped(def.text, static_cast<int>(row.x) + 64, static_cast<int>(row.y) + 36,
+                          static_cast<int>(row.width) - 90, 16, Fade(COL_CREAM, 0.8f), 1);
+        }
+
+        if (player.hasMap)
+        {
+            UiText("Mapa de la montaña: ya lo tenés, el tablero está revelado.",
+                   static_cast<int>(panel.x) + 24,
+                   static_cast<int>(panel.y + panel.height) - 40, 16, Fade(COL_GOLD, 0.8f));
+        }
     }
 
     static void GetFinalRanking(const GameState& game, int ranking[])
     {
-        const Duel& finalDuel  = game.duels[3];
-        const Duel& losersDuel = game.duels[2];
+        for (int i = 0; i < PLAYER_COUNT; ++i) ranking[i] = i;
 
-        ranking[0] = finalDuel.winner;
-        ranking[1] = (finalDuel.winner == finalDuel.playerA) ? finalDuel.playerB : finalDuel.playerA;
-        ranking[2] = losersDuel.winner;
-        ranking[3] = (losersDuel.winner == losersDuel.playerA) ? losersDuel.playerB : losersDuel.playerA;
+        for (int i = 0; i < PLAYER_COUNT - 1; ++i)
+        {
+            for (int j = 0; j < PLAYER_COUNT - 1 - i; ++j)
+            {
+                const Player& a = game.players[ranking[j]];
+                const Player& b = game.players[ranking[j + 1]];
+
+                int scoreA = (a.bossBeaten ? 1000 : 0) + a.bossParts * 100 + a.bossTurnsLeft * 10;
+                int scoreB = (b.bossBeaten ? 1000 : 0) + b.bossParts * 100 + b.bossTurnsLeft * 10;
+
+                if (scoreB > scoreA)
+                {
+                    int swap         = ranking[j];
+                    ranking[j]       = ranking[j + 1];
+                    ranking[j + 1]   = swap;
+                }
+            }
+        }
     }
 
     static void DrawFinalScreen(const GameState& game)
@@ -1809,50 +2224,74 @@ namespace ReyesCuadra
 
         int ranking[PLAYER_COUNT];
         GetFinalRanking(game, ranking);
-        const Player& king = game.players[game.kingId];
 
         UiTextCentered("FIN DE LA PARTIDA", SCREEN_WIDTH / 2, 36, 19, Fade(COL_CREAM, 0.85f), FontStyle::Bold);
 
-        DrawCrown(SCREEN_WIDTH / 2, 128, 64.0f + 4.0f * Pulse(time, 1.8f), COL_GOLD);
+        if (game.kingId >= 0)
+        {
+            const Player& king = game.players[game.kingId];
 
-        UiTextCentered("REY DE LA COLINA", SCREEN_WIDTH / 2, 164, 46, COL_GOLD, FontStyle::Bold);
-        UiTextCentered(TextFormat("JUGADOR %i", game.kingId + 1), SCREEN_WIDTH / 2, 218, 34,
-                       king.color, FontStyle::Bold);
+            DrawCrown(SCREEN_WIDTH / 2, 128, 64.0f + 4.0f * Pulse(time, 1.8f), COL_GOLD);
 
-        Rectangle panel{ SCREEN_WIDTH / 2.0f - 340.0f, 276.0f, 680.0f, 226.0f };
+            UiTextCentered("REY DE LA COLINA", SCREEN_WIDTH / 2, 164, 46, COL_GOLD, FontStyle::Bold);
+            UiTextCentered(TextFormat("JUGADOR %i  ·  %s", game.kingId + 1,
+                                      GetCharacterDef(king.character).name),
+                           SCREEN_WIDTH / 2, 218, 30, king.color, FontStyle::Bold);
+        }
+        else
+        {
+            UiTextCentered("LA COLINA SE QUEDA SIN REY", SCREEN_WIDTH / 2, 150, 40,
+                           COL_CURSE, FontStyle::Bold);
+            UiTextCentered("Nadie pudo con el jefe de la cima.", SCREEN_WIDTH / 2, 206, 20,
+                           Fade(COL_CREAM, 0.75f));
+        }
+
+        Rectangle panel{ SCREEN_WIDTH / 2.0f - 350.0f, 266.0f, 700.0f, 232.0f };
         DrawSoftPanel(panel, PANEL_COLOR, PANEL_BORDER, 0.06f);
 
-        UiText("POSICIONES FINALES", static_cast<int>(panel.x) + 24,
+        UiText("CÓMO LES FUE CONTRA EL JEFE", static_cast<int>(panel.x) + 24,
                static_cast<int>(panel.y) + 14, 16, COL_GOLD, FontStyle::Bold);
 
         for (int i = 0; i < PLAYER_COUNT; ++i)
         {
             const Player& player = game.players[ranking[i]];
-            int rowY = static_cast<int>(panel.y) + 48 + i * 42;
+            int rowY = static_cast<int>(panel.y) + 48 + i * 44;
 
-            Rectangle row{ panel.x + 12.0f, static_cast<float>(rowY) - 4.0f, panel.width - 24.0f, 38.0f };
-            DrawRectangleRounded(row, 0.3f, 6, (i == 0) ? Fade(COL_GOLD, 0.14f) : Fade(COL_INK_DEEP, 0.35f));
+            Rectangle row{ panel.x + 12.0f, static_cast<float>(rowY) - 4.0f, panel.width - 24.0f, 40.0f };
+            DrawRectangleRounded(row, 0.3f, 6,
+                                 (player.id == game.kingId) ? Fade(COL_GOLD, 0.14f)
+                                                            : Fade(COL_INK_DEEP, 0.35f));
 
-            UiText(TextFormat("%iº", i + 1), static_cast<int>(panel.x) + 28, rowY + 4, 20,
-                   (i == 0) ? COL_GOLD : COL_CREAM_DIM, FontStyle::Bold);
+            UiText(TextFormat("%iº", i + 1), static_cast<int>(panel.x) + 28, rowY + 6, 20,
+                   (player.id == game.kingId) ? COL_GOLD : COL_CREAM_DIM, FontStyle::Bold);
 
-            DrawCircle(static_cast<int>(panel.x) + 78, rowY + 15, 12.0f, player.color);
-            UiText(TextFormat("%i", player.id + 1), static_cast<int>(panel.x) + 74, rowY + 7, 15,
+            DrawCircle(static_cast<int>(panel.x) + 78, rowY + 16, 12.0f, player.color);
+            UiText(TextFormat("%i", player.id + 1), static_cast<int>(panel.x) + 74, rowY + 8, 15,
                    COL_INK_DEEP, FontStyle::Bold);
 
             UiText(PlayerLabel(player),
-                   static_cast<int>(panel.x) + 104, rowY + 5, 19, COL_CREAM, FontStyle::Bold);
+                   static_cast<int>(panel.x) + 104, rowY + 2, 18, COL_CREAM, FontStyle::Bold);
 
-            UiText(TextFormat("%i bendiciones    %i maldiciones    %i sin usar",
+            UiText(GetCharacterDef(player.character).name,
+                   static_cast<int>(panel.x) + 104, rowY + 22, 14,
+                   Fade(GetCharacterDef(player.character).color, 0.9f));
+
+            UiText(player.bossBeaten
+                       ? TextFormat("venció al jefe  ·  %i partes derribadas", player.bossParts)
+                       : TextFormat("cayó ante el jefe  ·  %i partes derribadas", player.bossParts),
+                   static_cast<int>(panel.x) + 300, rowY + 4, 15,
+                   player.bossBeaten ? COL_BLESSING : Fade(COL_CREAM, 0.6f));
+
+            UiText(TextFormat("%i bendiciones   %i maldiciones   %i ítems",
                               CountCards(player, CardKind::Blessing),
                               CountCards(player, CardKind::Curse),
-                              CountPendingCards(player)),
-                   static_cast<int>(panel.x) + 250, rowY + 10, 14, Fade(COL_CREAM, 0.75f));
+                              static_cast<int>(player.items.size())),
+                   static_cast<int>(panel.x) + 300, rowY + 24, 14, Fade(COL_CREAM, 0.6f));
         }
 
         float glow = 0.75f + 0.25f * Pulse(time, 2.4f);
-        UiTextCentered("[R] jugar de nuevo", SCREEN_WIDTH / 2, 528, 26, Fade(COL_GOLD, glow), FontStyle::Bold);
-        UiTextCentered("[ESC] salir del juego", SCREEN_WIDTH / 2, 566, 17, Fade(COL_CREAM, 0.6f));
+        UiTextCentered("[R] jugar de nuevo", SCREEN_WIDTH / 2, 524, 26, Fade(COL_GOLD, glow), FontStyle::Bold);
+        UiTextCentered("[ESC] salir del juego", SCREEN_WIDTH / 2, 562, 17, Fade(COL_CREAM, 0.6f));
         UiTextCentered(CREDITS_LINE, SCREEN_WIDTH / 2, 648, 15, Fade(COL_CREAM, 0.45f));
     }
 
@@ -1929,6 +2368,12 @@ namespace ReyesCuadra
             return;
         }
 
+        if (game.phase == GamePhase::CharacterSelect)
+        {
+            DrawCharacterSelect(game);
+            return;
+        }
+
         if (game.phase == GamePhase::Victory)
         {
             DrawFinalScreen(game);
@@ -1951,7 +2396,9 @@ namespace ReyesCuadra
                           STAGE_COUNT),
                SCREEN_WIDTH - 210, 24, 21, Fade(COL_CREAM, 0.85f), FontStyle::Bold);
 
-        DrawBoard();
+        const Player& turnPlayer = game.players[game.currentPlayer];
+
+        DrawBoard(game.currentStage, turnPlayer.hasMap);
 
         bool enemyPhase = IsEnemyPhase(game);
 
@@ -1960,6 +2407,9 @@ namespace ReyesCuadra
                           game.phase == GamePhase::EventChoice ||
                           game.phase == GamePhase::EventResult ||
                           game.phase == GamePhase::CardSelection ||
+                          game.phase == GamePhase::OptionalOffer ||
+                          game.phase == GamePhase::TreasureResult ||
+                          game.phase == GamePhase::RestResult ||
                           enemyPhase);
 
         DrawPlayerTokens(game.players, exploring ? game.currentPlayer : -1);
@@ -1970,8 +2420,7 @@ namespace ReyesCuadra
 
         bool busyPanel = (game.phase == GamePhase::CardSelection ||
                           game.phase == GamePhase::EventChoice ||
-                          game.phase == GamePhase::EnemyChoice ||
-                          game.phase == GamePhase::CombatChoice);
+                          game.phase == GamePhase::EnemyChoice);
 
         if (busyPanel)
         {
@@ -1986,8 +2435,16 @@ namespace ReyesCuadra
 
         DrawBanner(game);
 
-        UiText("[TAB] ver las cartas", SCREEN_WIDTH - 210, SCREEN_HEIGHT - 22, 14,
+        UiText("[TAB] ver las cartas", SCREEN_WIDTH - 230, SCREEN_HEIGHT - 22, 14,
                Fade(COL_CREAM, 0.35f));
+
+        if (!turnPlayer.isCpu && !turnPlayer.items.empty())
+        {
+            UiText(TextFormat("[I] mochila (%i)", static_cast<int>(turnPlayer.items.size())),
+                   430, SCREEN_HEIGHT - 22, 14, Fade(COL_GOLD, 0.7f));
+        }
+
+        if (game.phase == GamePhase::ItemMenu) DrawItemMenu(game);
 
         if (game.showCards) DrawCardsOverlay(game);
     }

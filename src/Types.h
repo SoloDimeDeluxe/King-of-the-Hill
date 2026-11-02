@@ -20,11 +20,44 @@ namespace ReyesCuadra
     constexpr int MAX_DICE         = 5;
     constexpr int MAX_CHOICES      = 5;
 
+    constexpr int MAX_ITEMS = 4;
+
     enum class PathKind
     {
         Easy   = 0,
         Normal = 1,
         Hard   = 2
+    };
+
+    // Qué hay en una casilla. El tablero deja de ser un camino lineal porque
+    // cada carril mezcla tipos distintos en las mismas etapas.
+    enum class TileKind
+    {
+        Event    = 0,
+        Enemy    = 1,
+        Treasure = 2,
+        Rest     = 3,
+        Optional = 4,
+        MiniBoss = 5,
+        Boss     = 6
+    };
+
+    enum class ItemId
+    {
+        None      = -1,
+        Charm     = 0,
+        Whetstone = 1,
+        Potion    = 2,
+        Map       = 3,
+        Count     = 4
+    };
+
+    enum class CharacterId
+    {
+        Climber = 0,
+        Hunter  = 1,
+        Lucky   = 2,
+        Count   = 3
     };
 
     enum class CardKind
@@ -65,10 +98,25 @@ namespace ReyesCuadra
         float    visualStage    = 0.0f;
         float    visualLane     = 1.0f;
 
+        CharacterId character = CharacterId::Climber;
+
         std::vector<CardInstance> cards;
+        std::vector<ItemId>       items;
+
+        bool hasMap      = false;
+        int  extraWounds = 0;
+
+        // Cómo le fue contra el jefe de la cima: de ahí sale la corona.
+        bool bossBeaten    = false;
+        int  bossParts     = 0;
+        int  bossTurnsLeft = 0;
     };
 
     const char* GetPathName(PathKind path);
     Color       GetPathColor(PathKind path);
     const char* GetCardLevelName(CardLevel level);
+
+    const char* GetTileName(TileKind kind);
+    const char* GetTileShortName(TileKind kind);
+    bool        TileIsFight(TileKind kind);
 }

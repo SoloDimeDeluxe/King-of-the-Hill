@@ -20,6 +20,99 @@ namespace ReyesCuadra
     constexpr float COMBAT_W = 520.0f;
     constexpr float COMBAT_H = 72.0f;
 
+    // El mapa de la montaña. Las etapas 4 y 6 son los dos hitos del documento
+    // (mini jefe a la mitad, jefe en la cima) y están en los tres carriles; las
+    // otras cuatro cambian según el camino, así que elegir carril ya no es sólo
+    // elegir dificultad.
+    static const TileKind TILE_MAP[STAGE_COUNT][PATH_COUNT] =
+    {
+        { TileKind::Event,    TileKind::Enemy,    TileKind::Enemy    },
+        { TileKind::Rest,     TileKind::Event,    TileKind::Treasure },
+        { TileKind::Enemy,    TileKind::Treasure, TileKind::Optional },
+        { TileKind::MiniBoss, TileKind::MiniBoss, TileKind::MiniBoss },
+        { TileKind::Event,    TileKind::Optional, TileKind::Treasure },
+        { TileKind::Boss,     TileKind::Boss,     TileKind::Boss     }
+    };
+
+    TileKind GetTileKind(PathKind path, int stage)
+    {
+        if (stage < 0 || stage >= STAGE_COUNT) return TileKind::Event;
+
+        int lane = static_cast<int>(path);
+        if (lane < 0 || lane >= PATH_COUNT) lane = 0;
+
+        return TILE_MAP[stage][lane];
+    }
+
+    Color GetTileColor(TileKind kind)
+    {
+        switch (kind)
+        {
+            case TileKind::Event:    return Color{ 150, 165, 200, 255 };
+            case TileKind::Enemy:    return Color{ 225,  90,  90, 255 };
+            case TileKind::Treasure: return COL_GOLD;
+            case TileKind::Rest:     return Color{ 120, 205, 150, 255 };
+            case TileKind::Optional: return Color{ 190, 130, 235, 255 };
+            case TileKind::MiniBoss: return Color{ 235, 125,  60, 255 };
+            case TileKind::Boss:     return COL_MAGENTA_LIT;
+        }
+        return COL_CREAM;
+    }
+
+    // Un dibujito por tipo de casilla. Nada sofisticado: formas planas que se
+    // leen de un vistazo y no necesitan imágenes.
+    static void DrawTileGlyph(TileKind kind, float cx, float cy, Color color)
+    {
+        switch (kind)
+        {
+            case TileKind::Event:
+                DrawRectangleRounded(Rectangle{ cx - 8.0f, cy - 9.0f, 16.0f, 18.0f }, 0.3f, 4, color);
+                DrawRectangleRounded(Rectangle{ cx - 4.0f, cy - 5.0f, 8.0f, 2.0f }, 0.5f, 3, COL_INK_SOFT);
+                DrawRectangleRounded(Rectangle{ cx - 4.0f, cy - 1.0f, 8.0f, 2.0f }, 0.5f, 3, COL_INK_SOFT);
+                break;
+
+            case TileKind::Enemy:
+            case TileKind::MiniBoss:
+            {
+                DrawCircle(static_cast<int>(cx), static_cast<int>(cy) + 1, 9.0f, color);
+                DrawTriangle(Vector2{ cx - 9.0f, cy - 4.0f },
+                             Vector2{ cx - 11.0f, cy - 13.0f },
+                             Vector2{ cx - 2.0f, cy - 8.0f }, color);
+                DrawTriangle(Vector2{ cx + 9.0f, cy - 4.0f },
+                             Vector2{ cx + 2.0f, cy - 8.0f },
+                             Vector2{ cx + 11.0f, cy - 13.0f }, color);
+                DrawCircle(static_cast<int>(cx) - 3, static_cast<int>(cy), 2.0f, COL_INK_DEEP);
+                DrawCircle(static_cast<int>(cx) + 3, static_cast<int>(cy), 2.0f, COL_INK_DEEP);
+            } break;
+
+            case TileKind::Treasure:
+                DrawRectangleRounded(Rectangle{ cx - 10.0f, cy - 6.0f, 20.0f, 14.0f }, 0.25f, 4, color);
+                DrawRectangle(static_cast<int>(cx) - 10, static_cast<int>(cy) - 1,
+                              20, 3, Fade(COL_INK_DEEP, 0.75f));
+                DrawRectangle(static_cast<int>(cx) - 2, static_cast<int>(cy) - 6,
+                              4, 14, Fade(COL_INK_DEEP, 0.75f));
+                break;
+
+            case TileKind::Rest:
+                DrawTriangle(Vector2{ cx, cy - 11.0f },
+                             Vector2{ cx - 9.0f, cy + 7.0f },
+                             Vector2{ cx + 9.0f, cy + 7.0f }, color);
+                DrawRectangle(static_cast<int>(cx) - 10, static_cast<int>(cy) + 6, 20, 3, color);
+                break;
+
+            case TileKind::Optional:
+                DrawCircleLines(static_cast<int>(cx), static_cast<int>(cy), 10.0f, color);
+                DrawCircleLines(static_cast<int>(cx), static_cast<int>(cy), 9.0f, color);
+                UiTextCentered("?", static_cast<int>(cx), static_cast<int>(cy) - 10, 19,
+                               color, FontStyle::Bold);
+                break;
+
+            case TileKind::Boss:
+                DrawCrown(static_cast<int>(cx), static_cast<int>(cy), 22.0f, color);
+                break;
+        }
+    }
+
     int GetEventDifficulty(PathKind path, int stage)
     {
         int base = 0;
@@ -47,7 +140,7 @@ namespace ReyesCuadra
                                      static_cast<float>(stage));
     }
 
-    void DrawBoard()
+    void DrawBoard(int currentStage, bool revealAll)
     {
         float time = static_cast<float>(GetTime());
 
@@ -72,18 +165,40 @@ namespace ReyesCuadra
                 Rectangle tile{ center.x - TILE_SIZE * 0.5f, center.y - TILE_SIZE * 0.5f,
                                 TILE_SIZE, TILE_SIZE };
 
+                TileKind kind = GetTileKind(path, stage);
+
+                // Sin el mapa de la montaña sólo se ve lo que ya pisaste y la
+                // etapa en la que estás; el resto queda tapado.
+                bool known = revealAll || stage <= currentStage;
+
+                Color tileColor = known ? GetTileColor(kind) : Fade(color, 0.45f);
+
                 Rectangle shadow = tile;
                 shadow.x += 3.0f; shadow.y += 4.0f;
                 DrawRectangleRounded(shadow, 0.28f, 6, Fade(BLACK, 0.35f));
 
                 DrawRectangleRounded(tile, 0.28f, 6, COL_INK_SOFT);
                 DrawRectangleRounded(Rectangle{ tile.x, tile.y, tile.width, tile.height * 0.45f },
-                                     0.4f, 6, Fade(color, 0.22f));
-                DrawRectangleRoundedLinesEx(tile, 0.28f, 6, 2.0f, Fade(color, 0.85f));
+                                     0.4f, 6, Fade(tileColor, 0.22f));
+                DrawRectangleRoundedLinesEx(tile, 0.28f, 6, 2.0f, Fade(tileColor, 0.85f));
 
-                const char* difficultyText = TextFormat("%i", GetEventDifficulty(path, stage));
-                UiTextCentered(difficultyText, static_cast<int>(center.x),
-                               static_cast<int>(center.y) - 12, 22, COL_CREAM, FontStyle::Bold);
+                if (known)
+                {
+                    DrawTileGlyph(kind, center.x, center.y - 5.0f, tileColor);
+
+                    if (TileIsFight(kind) || kind == TileKind::Event)
+                    {
+                        UiTextCentered(TextFormat("%i", GetEventDifficulty(path, stage)),
+                                       static_cast<int>(center.x), static_cast<int>(center.y) + 9,
+                                       16, Fade(COL_CREAM, 0.8f), FontStyle::Bold);
+                    }
+                }
+                else
+                {
+                    UiTextCentered("?", static_cast<int>(center.x),
+                                   static_cast<int>(center.y) - 14, 26,
+                                   Fade(COL_CREAM, 0.35f), FontStyle::Bold);
+                }
             }
         }
 
@@ -102,9 +217,9 @@ namespace ReyesCuadra
         DrawCrown(static_cast<int>(COMBAT_X) + 56, static_cast<int>(COMBAT_Y) + 30,
                   40.0f, Fade(COL_GOLD, glow));
 
-        UiText("ZONA DE COMBATE", static_cast<int>(COMBAT_X) + 96, static_cast<int>(COMBAT_Y) + 14,
+        UiText("LA CIMA", static_cast<int>(COMBAT_X) + 96, static_cast<int>(COMBAT_Y) + 14,
                21, COL_GOLD, FontStyle::Bold);
-        UiText("el torneo por la corona", static_cast<int>(COMBAT_X) + 96,
+        UiText("el jefe final y la corona", static_cast<int>(COMBAT_X) + 96,
                static_cast<int>(COMBAT_Y) + 42, 15, Fade(COL_CREAM, 0.7f));
     }
 

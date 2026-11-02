@@ -105,8 +105,9 @@ namespace ReyesCuadra
     // Primero asegura la victoria: va por las partes que cuentan y que menos
     // dificultad piden. Sólo si ya le sobran turnos prueba suerte con la parte
     // de bonus, que es la que da la recompensa grande.
-    int CpuChoosePart(const Enemy& enemy, PathKind path, int stage)
+    int CpuChoosePart(const Player& player, const Enemy& enemy, int stage)
     {
+        PathKind path = player.path;
         int needed = enemy.neededDowns - CountDownedCounting(enemy);
 
         int woundsToWin = 0;
@@ -143,6 +144,50 @@ namespace ReyesCuadra
         }
 
         return (best >= 0) ? best : FirstAlivePart(enemy);
+    }
+
+    // Las batallas opcionales las toma si viene entera: si junta más
+    // maldiciones que bendiciones prefiere no arriesgar.
+    // Qué ítem le conviene gastar ahora, o -1 si ninguno. Mide la tirada que
+    // está por hacer contra la dificultad que tiene enfrente.
+    int CpuChooseItem(const Player& player, int difficulty, bool isFight, int woundsLeft)
+    {
+        int charm = -1, whetstone = -1, potion = -1;
+
+        for (int i = 0; i < static_cast<int>(player.items.size()); ++i)
+        {
+            switch (player.items[i])
+            {
+                case ItemId::Charm:     if (charm     < 0) charm     = i; break;
+                case ItemId::Whetstone: if (whetstone < 0) whetstone = i; break;
+                case ItemId::Potion:    if (potion    < 0) potion    = i; break;
+                default: break;
+            }
+        }
+
+        // La piedra sólo vale la pena si la parte aguanta más de un golpe.
+        if (isFight && whetstone >= 0 && woundsLeft >= 2) return whetstone;
+
+        // El amuleto, cuando la tirada está realmente difícil.
+        if (charm >= 0 && difficulty >= 13) return charm;
+
+        // La poción, cuando ya arrastra más maldiciones que bendiciones.
+        if (potion >= 0 && CountCards(player, CardKind::Curse) > CountCards(player, CardKind::Blessing))
+        {
+            return potion;
+        }
+
+        return -1;
+    }
+
+    bool CpuTakesOptionalFight(const Player& player)
+    {
+        int blessings = CountCards(player, CardKind::Blessing);
+        int curses    = CountCards(player, CardKind::Curse);
+
+        if (curses > blessings) return RandomInt(0, 3) == 0;
+
+        return RandomInt(0, 4) != 0;
     }
 
     // Con el combate ya ganado, sólo sigue si le sobran turnos para tumbar la

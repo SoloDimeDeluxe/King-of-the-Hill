@@ -1,0 +1,72 @@
+KING OF THE HILL
+Prototipo jugable  ·  Federico Fernandez Soto · Salvador Rosafioriti · Valentin Reyes
+
+
+COMO LO ABRIS
+-------------
+Descomprimi toda la carpeta en cualquier lado y hace doble clic en
+KingOfTheHill.exe.
+
+Importante: la carpeta assets tiene que quedar AL LADO del .exe. Si movés
+solamente el ejecutable, el juego abre igual pero sin la tipografia ni el
+sonido.
+
+No instala nada y no escribe archivos fuera de su carpeta. Windows 64 bits.
+
+La primera vez Windows puede avisar que no reconoce el programa: es porque el
+.exe no esta firmado. Le das en "Mas informacion" y "Ejecutar de todas formas".
+
+Si al abrirlo salta un cartel diciendo que falta VCRUNTIME140.dll o
+MSVCP140.dll, instalate el "Microsoft Visual C++ Redistributable 2015-2022
+(x64)", que se baja gratis de la pagina de Microsoft. Es un solo instalador y
+despues anda. La mayoria de las PCs ya lo tienen porque lo instala cualquier
+juego.
+
+
+DE QUE VA
+---------
+Sos uno de cuatro que suben la misma montana; los otros tres los maneja la
+maquina. Elegis personaje, subis por uno de los tres caminos resolviendo lo
+que te toque en cada casilla, y arriba de todo esta el jefe final: ganarle es
+llevarse la corona. Si nadie puede con el, la colina se queda sin rey.
+
+Todo se resuelve tirando un dado de 20 contra una dificultad. El 20 natural
+gana solo y el 1 natural pierde solo, sin importar los modificadores.
+
+
+CONTROLES
+---------
+  ENTER          empezar y confirmar
+  1 2 3 4        elegir (camino, carta, parte del enemigo, item)
+  ESPACIO        tirar el dado y seguir
+  TAB            ver las cartas de cualquier jugador
+  I              abrir la mochila de items
+  M              silenciar
+  F11            pantalla completa (Alt+Enter tambien)
+  R              jugar de nuevo, en la pantalla final
+  ESC            salir del juego, o volver a modo ventana
+
+
+LO QUE TE VAS A ENCONTRAR
+-------------------------
+  Evento             una tirada contra la dificultad
+  Enemigo            combate: elegis que parte atacar y le vas sacando heridas
+  Tesoro             un item gratis
+  Descanso           te saca de encima una maldicion
+  Batalla opcional   podes pelear por un item o pasar de largo
+  Mini jefe (et. 4)  un enemigo grande, en los tres caminos
+  Jefe (et. 6)       el de la corona
+
+Las cartas (96 en total, bendiciones y maldiciones) se activan solas en la
+tirada que dice su texto. Con TAB podes leerlas todas en cualquier momento.
+
+Los items, en cambio, los gastas vos a mano con I: amuleto (+3 a la tirada),
+piedra de afilar (el proximo golpe saca 2 heridas), pocion (te saca una
+maldicion) y el mapa de la montana, que destapa el tablero entero.
+
+
+SI ALGO SALE MAL
+----------------
+Si el juego no abre o se ve raro, avisanos y mandanos que paso. Es un
+prototipo y hay reglas que todavia estamos ajustando: los numeros de los
+enemigos y de los personajes son provisionales.

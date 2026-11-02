@@ -2,9 +2,10 @@
 
 #include "Types.h"
 #include "Cards.h"
-#include "Combat.h"
 #include "Effects.h"
 #include "Enemy.h"
+#include "Items.h"
+#include "Characters.h"
 
 #include <string>
 
@@ -13,23 +14,22 @@ namespace ReyesCuadra
     enum class GamePhase
     {
         Menu,
+        CharacterSelect,
         TurnOrder,
         PathSelection,
         EventRoll,
         EventChoice,
         EventResult,
+        OptionalOffer,
         EnemyIntro,
         EnemyTarget,
         EnemyChoice,
         EnemyResult,
         EnemyOutcome,
+        TreasureResult,
+        RestResult,
+        ItemMenu,
         CardSelection,
-        Initiative,
-        InitiativeResult,
-        CombatIntro,
-        CombatRoll,
-        CombatChoice,
-        CombatResult,
         Victory
     };
 
@@ -68,19 +68,25 @@ namespace ReyesCuadra
         CardLevel offerLevel                = CardLevel::Weak;
         int       rewardBump                = 0;
 
-        Enemy       enemy;
-        int         enemyTarget = 0;
-        bool        enemyWon    = false;
-        std::string enemyNote;
+        TileKind    currentTile = TileKind::Event;
+        std::string tileNote;
 
-        int  initiativeOrder[PLAYER_COUNT] = {};
-        Duel duels[DUEL_COUNT];
-        int  currentDuel = 0;
-        int  kingId      = -1;
+        Enemy        enemy;
+        CombatMemory enemyMemory;
+        int          enemyTarget = 0;
+        bool         enemyWon    = false;
+        std::string  enemyNote;
+
+        CharacterId menuCharacter   = CharacterId::Climber;
+        GamePhase   itemReturnPhase = GamePhase::EventRoll;
+        int         rollBonus       = 0;
+
+        int kingId = -1;
 
         // El juego es de 1 jugador: los otros tres los maneja la CPU. El motor
         // soporta más humanos, pero la interfaz no deja cambiarlo.
-        int    humanCount    = 1;
+        int humanCount = 1;
+
         double revealUntil   = 0.0;
         double resultTime    = 0.0;
         double cpuNextAction = 0.0;

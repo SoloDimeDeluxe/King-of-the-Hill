@@ -1,9 +1,10 @@
 # King of the Hill
 
-Prototipo digital del juego de mesa, en C++ con raylib. **Un jugador contra
-tres rivales controlados por la CPU**: exploración de la montaña con eventos de
-D20, las 96 bendiciones y maldiciones del diseño con sus efectos reales, y
-torneo al mejor de 3 tiradas con batalla final.
+Prototipo digital del juego, en C++ con raylib. **Roguelite de un jugador**
+contra tres rivales controlados por la CPU: elegís personaje, subís la montaña
+por uno de los tres caminos, resolvés cada casilla con el D20, juntás las 96
+bendiciones y maldiciones del diseño (todas con sus efectos reales) más ítems,
+y en la cima te espera el jefe final, que es quien reparte la corona.
 
 **Integrantes:** Federico Fernandez Soto · Salvador Rosafioriti · Valentin Reyes
 
@@ -42,14 +43,17 @@ King-of-the-Hill/
 
 | Fase | Teclas |
 |---|---|
-| Menú | `ENTER` empezar |
+| Menú | `ENTER` ir a elegir personaje |
 | Orden de turnos | `ESPACIO` para tirar al empezar la partida |
 | Elegir camino | `1` fácil (gris) · `2` normal (rojo) · `3` difícil (púrpura) · `ENTER` confirmar |
 | Ver las cartas | `TAB` en cualquier momento · `1`…`4` para ver las de cada jugador |
 | Tirar el D20 | `ESPACIO` |
-| Elegir carta | `1` · `2` · `3` |
+| Elegir carta | `1` · `2` · `3` (salen como tres cartas en pantalla) |
+| Elegir personaje | `1` · `2` · `3` · `ENTER` confirmar |
 | Enemigo | `1`…`4` elegir la parte · `ESPACIO` atacar · `ENTER` cobrar si ya ganaste |
-| Combate | `ESPACIO` por tirada |
+| Batalla opcional | `1` pelear · `2` pasar de largo |
+| Mochila | `I` abrir y cerrar · `1`…`4` usar un ítem |
+| Tesoro y descanso | `ESPACIO` seguir |
 | Elegir (cartas que lo piden) | `1` … `5` |
 | Pantalla final | `R` jugar de nuevo · `ESC` salir |
 | En cualquier momento | `F11` o `Alt+Enter` pantalla completa · `M` silenciar · `ESC` salir (o volver a ventana) |
@@ -64,9 +68,15 @@ King-of-the-Hill/
   casilla (fácil 8, normal 12, difícil 16, con +1 cada dos etapas). La ficha se
   mueve al camino apenas lo elegís, pero podés cambiarlo las veces que quieras
   hasta confirmar con `ENTER`.
-- **Eventos y enemigos**: las etapas **1, 3 y 5** son eventos (una sola tirada
-  contra la dificultad). Las etapas **2, 4 y 6** son combates contra un enemigo
-  (ver más abajo). El resultado reparte carta igual en los dos casos.
+- **Personaje**: antes de empezar elegís uno de tres. No cambian el recorrido,
+  cambian con qué arrancás (ver más abajo).
+- **Tipos de casilla**: el tablero no es lineal. Cada carril mezcla eventos,
+  enemigos, tesoros, descansos y batallas opcionales, y los dos hitos del
+  documento están en los tres caminos: el **mini jefe en la etapa 4** y el
+  **jefe final en la etapa 6**. Elegir carril ya no es sólo elegir dificultad.
+- **Niebla**: de entrada sólo se ve hasta la etapa en la que estás; lo demás son
+  signos de pregunta. El **mapa de la montaña** revela todo el tablero, y es la
+  recompensa de la primera batalla opcional que ganes.
 - **Consulta de cartas**: `TAB` abre en cualquier momento la lista de cartas de
   cada jugador, con su texto completo y si ya se usaron.
 - **Cartas**: se ofrecen 3 del mazo correspondiente, el jugador guarda 1 y las
@@ -74,13 +84,13 @@ King-of-the-Hill/
   peligrosas y difícil épicas.
 - **Críticos**: 20 natural gana solo, 1 natural pierde solo; en ambos casos se
   ignoran los modificadores.
-- **Torneo**: iniciativa de los 4; se cruzan los dos más altos y los dos más
-  bajos; después juegan los dos perdedores (3er puesto) y por último los dos
-  ganadores. Cada combate es **al mejor de 3 tiradas**, tirada por tirada.
-- **Recompensa de combate**: el ganador le roba una bendición al perdedor (es lo
-  que da sentido a la carta *Corona rota*, que la bloquea).
-- **Pantalla final**: corona al rey de la colina y muestra las cuatro
-  posiciones. Con `R` arranca otra partida.
+- **La corona**: la da el **jefe de la cima**, no un torneo entre jugadores. Los
+  cuatro llegan y lo pelean; se corona al que mejor le fue (primero quien le
+  ganó, después quien le derribó más partes y a quien le sobraron más turnos).
+  Si nadie puede con él, la colina se queda sin rey, y pasa en una de cada
+  veinte partidas.
+- **Pantalla final**: muestra cómo le fue a cada uno contra el jefe. Con `R`
+  arranca otra partida desde la elección de personaje.
 
 ## Jugadores y CPU
 
@@ -110,6 +120,48 @@ que hace, y sus decisiones están en `src/Cpu.cpp`:
 Es una CPU de prototipo: alcanza para que una partida de 1 jugador tenga
 sentido, pero no planifica a futuro ni mira la mano de los rivales.
 
+## Personajes
+
+Antes de empezar elegís uno de tres. El documento los pide como mecánica pero
+no dice cuáles son, así que **estos son provisionales**: están en una sola
+tabla, en `src/Characters.cpp`.
+
+| Personaje | Pasiva |
+|---|---|
+| La Escaladora | suma 2 a las tiradas de evento |
+| El Cazador | suma 2 a los golpes contra enemigos |
+| El Afortunado | arranca con dos ítems y una bendición común |
+
+El bono se suma después de las cartas, y un 20 o un 1 natural lo ignoran igual
+que a todo lo demás. Las CPU toman un personaje al azar. Sobre 300 partidas
+simuladas los tres ganan una cantidad parecida de coronas.
+
+## Casillas e ítems
+
+Las casillas que no son combate resuelven solas, sin tirada:
+
+| Casilla | Qué pasa |
+|---|---|
+| Evento | una tirada contra la dificultad: bendición si pasás, maldición si no |
+| Enemigo · mini jefe · jefe | combate por partes (abajo) |
+| Tesoro | un ítem gratis |
+| Descanso | te saca de la mano la peor maldición que no usaste |
+| Batalla opcional | podés pelear o pasar; si ganás te llevás un ítem en vez de carta |
+
+Los **ítems** son las "recompensas afuera del personaje" del documento: no son
+cartas, no se activan solas y los gastás a mano con `I` antes de tirar.
+
+| Ítem | Qué hace |
+|---|---|
+| Amuleto de la suerte | suma 3 a la tirada que estás por hacer |
+| Piedra de afilar | el próximo golpe a un enemigo le saca 2 heridas |
+| Poción de hierbas | te saca de la mano una maldición sin usar |
+| Mapa de la montaña | pasivo: revela todo el tablero |
+
+Entran cuatro en la mochila (el mapa no ocupa lugar). La CPU también los usa:
+el amuleto cuando la dificultad le queda lejos, la piedra cuando está por
+rematar una parte y la poción cuando arrastra maldiciones.
+
 ## Combate contra enemigos (PvE)
 
 **Esto es provisional.** El documento de diseño deja abiertas las preguntas de
@@ -129,23 +181,27 @@ no hace falta, pero derribarla sube un nivel la bendición de la recompensa. Si
 ya ganaste y te sobran turnos podés cobrar con `ENTER` o seguir con `ESPACIO`
 para ir por la cabeza, sabiendo que un fallo todavía te cuesta una maldición.
 
-| Etapa | Enemigo | Partes (ajuste / heridas) | Turnos | Hay que derribar |
+| Dónde | Enemigo | Partes (ajuste / heridas) | Turnos | Hay que derribar |
 |---|---|---|---|---|
-| 2 | Bestia del camino | Cola −4/1 · Cuerpo −2/1 · **Cabeza** +2/1 | 3 | 2 |
-| 4 | Guardián de la ladera | Patas −5/1 · Cuerpo −3/1 · Ala −2/1 · **Cabeza** +2/1 | 5 | 3 |
-| 6 | Señor de la cima | Cola −5/1 · Cuerpo −4/1 · Garra −3/1 · **Cabeza** +1/2 | 5 | 3 |
+| casillas de enemigo y batallas opcionales | Bestia del camino | Cola −4/1 · Cuerpo −2/1 · **Cabeza** +2/1 | 3 | 2 |
+| etapa 4, en los tres caminos | Guardián de la ladera | Patas −5/1 · Cuerpo −3/1 · Ala −2/1 · **Cabeza** +2/1 | 5 | 3 |
+| etapa 6, la cima | Señor de la cima | Cola −5/1 · Cuerpo −4/1 · Garra −3/1 · **Cabeza** +1/2 | 5 | 3 |
 
-Las tiradas pasan por el mismo motor de cartas que todo lo demás, así que las
-bendiciones y maldiciones funcionan igual que en un evento (y el 20 y el 1
-naturales siguen decidiendo solos). Sobre 2.400 combates simulados, los tres
-enemigos se ganan en torno al 90 % en el camino fácil, 60 % en el normal y 22 %
-en el difícil: parecido a la tirada de evento, un poco más generoso para
-compensar las maldiciones del contraataque.
+Las tiradas pasan por el mismo motor de cartas que todo lo demás, y **cuentan
+como combate**: las cartas que dicen "en tu próximo combate" se gastan acá. Sin
+eso, al sacar el torneo PvP un tercio del mazo no se usaría nunca. Lo que queda
+inerte son las que apuntan al rival (*Twisted*, *Justicia Divina*), porque un
+enemigo no tira el dado: no se rompen, simplemente no hacen nada.
+
+Sobre más de 4.000 combates simulados se ganan en torno al 90 % en el camino
+fácil, 60 % en el normal y 22 % en el difícil: parecido a la tirada de evento,
+un poco más generoso para compensar las maldiciones del contraataque.
 
 Lo que sigue abierto son las cuatro decisiones del final de la propuesta (vida
 del jugador, si el PvE reemplaza del todo a los eventos, cuántas partes se
 muestran y qué da la cabeza). Hoy están resueltas por defecto: sin vida,
-alternando eventos y combates, hasta 4 partes y bendición de un nivel más.
+conviviendo con eventos y otras casillas, hasta 4 partes y bendición de un
+nivel más.
 
 ## Las 96 cartas
 
@@ -153,6 +209,12 @@ Están implementadas **las 96**, con su nombre y su texto tal como figuran en
 `King of the hill cartas - estado.xlsx`. El catálogo vive en `src/Cards.cpp`:
 una fila por carta con su tipo de efecto y sus parámetros. El motor que las
 aplica es `src/Effects.cpp`.
+
+La misma planilla está en **[docs/cartas-estado.html](docs/cartas-estado.html)**,
+que se abre con doble clic en cualquier navegador —sin Excel y sin internet— y
+trae buscador y filtros por tipo, rareza y estado; y en
+**[docs/cartas-estado.csv](docs/cartas-estado.csv)**, que GitHub muestra como
+tabla desde la web.
 
 La mayoría se activan solas en la tirada que indica su texto. Las que dicen
 "elegí" o "podés" abren una pantalla de elección con teclas `1`…`5`:
@@ -210,7 +272,8 @@ perdida. Vale la pena testearla.
 | `src/Effects.h/.cpp` | motor de efectos: cómo se resuelve cada tirada |
 | `src/Board.h/.cpp` | geometría del tablero vertical, dificultades y dibujo |
 | `src/Enemy.h/.cpp` | los enemigos del PvE: partes, heridas y turnos |
-| `src/Combat.h/.cpp` | iniciativa y torneo al mejor de 3 |
+| `src/Items.h/.cpp` | los ítems y la mochila |
+| `src/Characters.h/.cpp` | los tres personajes y sus pasivas |
 | `src/Game.h/.cpp` | máquina de estados de la partida y UI |
 | `src/Cpu.h/.cpp` | las decisiones de los jugadores controlados por la máquina |
 | `src/Ui.h/.cpp` | fuentes y dibujo de todo el texto |
@@ -281,15 +344,15 @@ licencia para publicarlo en itch).
 
 | Archivo | Cuándo suena |
 |---|---|
-| `dice.wav` | al tirar el D20 (exploración, iniciativa y combate) |
+| `dice.wav` | al tirar el D20 (orden de turnos, eventos y combates) |
 | `success.wav` / `fail.wav` | medio segundo después del dado, con el resultado |
 | `crit.wav` | 20 natural |
 | `card.wav` | al quedarte con una carta |
 | `select.wav` | menús, elección de camino y elecciones de cartas |
-| `hit.wav` | al comparar las dos tiradas de un combate |
+| `hit.wav` | al acertarle a una parte del enemigo |
 | `victory.wav` | al coronar al rey de la colina |
 | `music_explore.ogg` | loop de la fase de exploración (23 s) |
-| `music_combat.ogg` | loop del torneo (27 s) |
+| `music_combat.ogg` | loop de combate (27 s) |
 
 `src/Audio.cpp` concentra todo: carga, mute con `M`, cambio de pista y una cola
 de efectos con retardo (por eso el resultado de la tirada suena *después* del

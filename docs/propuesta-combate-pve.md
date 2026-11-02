@@ -163,7 +163,44 @@ Las respuestas por defecto a las cuatro preguntas:
 - **D. La cabeza:** da una bendición de un nivel más alto. En el camino difícil,
   que ya da épicas, no sube más.
 
-Una cosa que quedó fuera a propósito: las tiradas del PvE pasan por el motor de
-cartas como **tiradas de exploración**, no de combate. O sea que las cartas que
-dicen "en tu próximo combate" no se gastan contra los enemigos, sólo en el
-torneo final. Si el grupo quiere lo contrario es una línea en `StartEnemyRoll`.
+Las tiradas del PvE pasan por el motor de cartas **como tiradas de combate**.
+Esto cambió cuando se sacó el torneo PvP: si no, un tercio del mazo (todas las
+cartas que dicen "en tu próximo combate") no se usaría nunca. Lo que queda
+inerte son las que apuntan al rival, porque un enemigo no tira el dado.
+
+## Lo que cambió al mover la corona al jefe
+
+El grupo decidió que **la corona la da el jefe de la cima**, no el torneo entre
+jugadores. Lo que implicó:
+
+- Se sacaron las fases de iniciativa, cruces y combates PvP, y con ellas
+  `src/Combat.cpp` (está en el historial de git si hace falta volver).
+- Los cuatro jugadores llegan a la etapa 6 y pelean al jefe por separado. Se
+  corona a quien mejor le fue: primero quien le ganó, después quien derribó más
+  partes y a quien le sobraron más turnos. Si nadie le gana, no hay rey, y pasa
+  en una de cada veinte partidas.
+- La recompensa de combate ya no es robarle una bendición al rival. *Corona
+  rota* sigue sirviendo: ahora bloquea la recompensa de ganarle a un enemigo.
+- El PvE pasó a contar como combate para las cartas, por lo dicho arriba.
+
+## Casillas, ítems y personajes
+
+Lo demás que pedía el documento y ahora está:
+
+- **El tablero dejó de ser lineal.** Cada carril mezcla eventos, enemigos,
+  tesoros, descansos y batallas opcionales; el mini jefe (etapa 4) y el jefe
+  (etapa 6) están en los tres caminos. El mapa está en `TILE_MAP`, en
+  `src/Board.cpp`.
+- **Batallas opcionales con recompensa afuera del personaje**: pagan con ítems,
+  no con cartas, y se pueden esquivar.
+- **Ítems** (`src/Items.cpp`): amuleto, piedra de afilar, poción y el mapa de la
+  montaña, que es el que el documento pide como premio de la primera batalla
+  opcional y sirve para algo porque, sin él, las casillas que no pisaste se ven
+  tapadas.
+- **Personajes** (`src/Characters.cpp`): tres, con una pasiva cada uno. El
+  documento los lista como mecánica pero no dice cuáles son, así que estos son
+  inventados y están todos en una tabla.
+
+Lo que sigue sin estar, porque no hay reglas escritas: la vida del jugador
+(decisión A), el orden de uso de recursos dentro de un turno, y los ítems que
+afecten al combate más allá de la piedra de afilar.

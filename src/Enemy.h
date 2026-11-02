@@ -35,11 +35,10 @@ namespace ReyesCuadra
         int         neededDowns = 2;
     };
 
-    bool        StageHasEnemy(int stage);
-    EnemyRank   GetStageEnemyRank(int stage);
     const char* GetEnemyRankName(EnemyRank rank);
+    EnemyRank   GetTileEnemyRank(TileKind kind);
 
-    Enemy MakeEnemy(int stage);
+    Enemy MakeEnemy(TileKind kind);
 
     int  GetPartDifficulty(const Enemy& enemy, int part, PathKind path, int stage);
     bool IsPartDown(const Enemy& enemy, int part);

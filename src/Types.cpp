@@ -34,4 +34,42 @@ namespace ReyesCuadra
         }
         return "?";
     }
+
+    const char* GetTileName(TileKind kind)
+    {
+        switch (kind)
+        {
+            case TileKind::Event:    return "EVENTO";
+            case TileKind::Enemy:    return "ENEMIGO";
+            case TileKind::Treasure: return "TESORO";
+            case TileKind::Rest:     return "DESCANSO";
+            case TileKind::Optional: return "BATALLA OPCIONAL";
+            case TileKind::MiniBoss: return "MINI JEFE";
+            case TileKind::Boss:     return "JEFE DE LA CIMA";
+        }
+        return "?";
+    }
+
+    const char* GetTileShortName(TileKind kind)
+    {
+        switch (kind)
+        {
+            case TileKind::Event:    return "evento";
+            case TileKind::Enemy:    return "enemigo";
+            case TileKind::Treasure: return "tesoro";
+            case TileKind::Rest:     return "descanso";
+            case TileKind::Optional: return "opcional";
+            case TileKind::MiniBoss: return "mini jefe";
+            case TileKind::Boss:     return "jefe";
+        }
+        return "?";
+    }
+
+    bool TileIsFight(TileKind kind)
+    {
+        return kind == TileKind::Enemy ||
+               kind == TileKind::Optional ||
+               kind == TileKind::MiniBoss ||
+               kind == TileKind::Boss;
+    }
 }
