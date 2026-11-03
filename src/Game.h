@@ -79,7 +79,6 @@ namespace ReyesCuadra
 
         CharacterId menuCharacter   = CharacterId::Climber;
         GamePhase   itemReturnPhase = GamePhase::EventRoll;
-        int         rollBonus       = 0;
 
         int kingId = -1;
 

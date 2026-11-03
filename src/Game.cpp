@@ -77,6 +77,7 @@ namespace ReyesCuadra
             player.items.clear();
             player.hasMap       = false;
             player.extraWounds  = 0;
+            player.rollBonus    = 0;
             player.bossBeaten   = false;
             player.bossParts    = 0;
             player.bossTurnsLeft = 0;
@@ -138,7 +139,6 @@ namespace ReyesCuadra
         game.eventSession    = RollSession{};
         game.cardOptionCount = 0;
         game.rewardBump      = 0;
-        game.rollBonus       = 0;
         game.kingId          = -1;
 
         game.currentTile = TileKind::Event;
@@ -198,6 +198,18 @@ namespace ReyesCuadra
 
         game.eventRoll    = game.eventSession.roll;
         game.eventEffects = game.eventSession.appliedNames;
+
+        // El bono del personaje y el del amuleto se suman después de las
+        // cartas, y un crítico los ignora igual que a todo lo demás.
+        int bonus = GetCharacterBonus(player, false) + player.rollBonus;
+
+        if (bonus != 0 && !game.eventRoll.criticalHit && !game.eventRoll.criticalFail)
+        {
+            game.eventRoll.total += bonus;
+            if (game.eventRoll.total < 1) game.eventRoll.total = 1;
+        }
+
+        player.rollBonus = 0;
 
         if (game.eventRoll.criticalHit)       game.eventSuccess = true;
         else if (game.eventRoll.criticalFail) game.eventSuccess = false;
@@ -299,7 +311,6 @@ namespace ReyesCuadra
 
         game.currentPlayer = game.turnOrder[game.turnIndex];
         game.pathPreview   = game.players[game.currentPlayer].path;
-        game.rollBonus     = 0;
 
         PlayTrack(MusicTrack::Explore);
 
@@ -627,7 +638,7 @@ namespace ReyesCuadra
 
         // El bono del personaje y el del amuleto se suman después de las
         // cartas, y un crítico los ignora igual que a todo lo demás.
-        int bonus = GetCharacterBonus(player, true) + game.rollBonus;
+        int bonus = GetCharacterBonus(player, true) + player.rollBonus;
 
         if (bonus != 0 && !game.eventRoll.criticalHit && !game.eventRoll.criticalFail)
         {
@@ -635,7 +646,7 @@ namespace ReyesCuadra
             if (game.eventRoll.total < 1) game.eventRoll.total = 1;
         }
 
-        game.rollBonus = 0;
+        player.rollBonus = 0;
 
         bool hit;
         if (game.eventRoll.criticalHit)       hit = true;
@@ -749,8 +760,8 @@ namespace ReyesCuadra
         switch (id)
         {
             case ItemId::Charm:
-                game.rollBonus += 3;
-                game.tileNote = "Amuleto listo: +3 a la tirada que viene.";
+                player.rollBonus += 3;
+                game.tileNote = "Amuleto listo: +3 a tu próxima tirada.";
                 break;
 
             case ItemId::Whetstone:
@@ -777,6 +788,7 @@ namespace ReyesCuadra
 
         RemoveItem(player, slot);
         PlaySfx(SoundId::Card);
+        ShowBanner(game, def.name, COL_GOLD);
         AddLog(game, TextFormat("Jugador %i usa %s", game.currentPlayer + 1, def.name));
         return true;
     }
@@ -986,16 +998,18 @@ namespace ReyesCuadra
 
         if (GetTime() < game.revealUntil) return;
 
-        // La mochila se abre con [I] en los momentos en los que un ítem sirve:
-        // antes de tirar en un evento y antes de pegarle a un enemigo.
-        bool canOpenItems = (game.phase == GamePhase::EventRoll ||
-                             game.phase == GamePhase::EnemyTarget) &&
-                            !game.players[game.currentPlayer].isCpu &&
-                            !game.players[game.currentPlayer].items.empty();
+        // La mochila se abre con [I] en cualquier momento de tu turno, aunque
+        // esté vacía: si la tecla no hace nada el jugador cree que está rota.
+        bool canOpenItems = (game.phase != GamePhase::Menu &&
+                             game.phase != GamePhase::CharacterSelect &&
+                             game.phase != GamePhase::Victory &&
+                             game.phase != GamePhase::ItemMenu) &&
+                            !game.players[game.currentPlayer].isCpu;
 
         if (canOpenItems && IsKeyPressed(KEY_I))
         {
             PlaySfx(SoundId::Select);
+            game.tileNote.clear();
             game.itemReturnPhase = game.phase;
             game.phase           = GamePhase::ItemMenu;
             return;
@@ -1367,18 +1381,27 @@ namespace ReyesCuadra
             UiText(GetPathName(player.path),
                    static_cast<int>(PANEL_X) + 54, rowY + 23, 15, GetPathColor(player.path));
 
+            // Tres columnas fijas: si se escriben una atrás de la otra, con los
+            // números de dos cifras "maldiciones" se come al "sin usar".
             UiText(TextFormat("%i", CountCards(player, CardKind::Blessing)),
-                   static_cast<int>(PANEL_X) + 230, rowY + 10, 18, COL_BLESSING, FontStyle::Bold);
-            UiText("bendiciones", static_cast<int>(PANEL_X) + 250, rowY + 12, 14,
+                   static_cast<int>(PANEL_X) + 220, rowY + 10, 18, COL_BLESSING, FontStyle::Bold);
+            UiText("bendiciones", static_cast<int>(PANEL_X) + 244, rowY + 12, 14,
                    Fade(COL_BLESSING, 0.75f));
 
             UiText(TextFormat("%i", CountCards(player, CardKind::Curse)),
-                   static_cast<int>(PANEL_X) + 370, rowY + 10, 18, COL_CURSE, FontStyle::Bold);
-            UiText("maldiciones", static_cast<int>(PANEL_X) + 390, rowY + 12, 14,
+                   static_cast<int>(PANEL_X) + 352, rowY + 10, 18, COL_CURSE, FontStyle::Bold);
+            UiText("maldiciones", static_cast<int>(PANEL_X) + 376, rowY + 12, 14,
                    Fade(COL_CURSE, 0.75f));
 
-            UiText(TextFormat("%i sin usar", CountPendingCards(player)),
-                   static_cast<int>(PANEL_X) + 468, rowY + 12, 15, COL_CREAM_DIM);
+            UiText(TextFormat("%i", CountPendingCards(player)),
+                   static_cast<int>(PANEL_X) + 486, rowY + 10, 18, COL_CREAM, FontStyle::Bold);
+            UiText("sin usar", static_cast<int>(PANEL_X) + 510, rowY + 12, 14, COL_CREAM_DIM);
+
+            if (!player.items.empty())
+            {
+                UiText(TextFormat("%i it.", static_cast<int>(player.items.size())),
+                       static_cast<int>(PANEL_X) + 576, rowY + 12, 14, Fade(COL_GOLD, 0.8f));
+            }
         }
     }
 
@@ -2159,6 +2182,9 @@ namespace ReyesCuadra
         {
             UiText("No tenés ningún ítem todavía.", static_cast<int>(panel.x) + 24,
                    static_cast<int>(panel.y) + 70, 19, Fade(COL_CREAM, 0.6f));
+            UiText("Los conseguís en los cofres y ganando batallas opcionales.",
+                   static_cast<int>(panel.x) + 24, static_cast<int>(panel.y) + 100, 16,
+                   Fade(COL_CREAM, 0.5f));
             return;
         }
 
@@ -2180,6 +2206,13 @@ namespace ReyesCuadra
 
             UiTextWrapped(def.text, static_cast<int>(row.x) + 64, static_cast<int>(row.y) + 36,
                           static_cast<int>(row.width) - 90, 16, Fade(COL_CREAM, 0.8f), 1);
+        }
+
+        if (!game.tileNote.empty())
+        {
+            UiTextWrapped(game.tileNote.c_str(), static_cast<int>(panel.x) + 24,
+                          static_cast<int>(panel.y + panel.height) - 66,
+                          static_cast<int>(panel.width) - 48, 16, COL_CREAM, 1);
         }
 
         if (player.hasMap)
@@ -2438,10 +2471,13 @@ namespace ReyesCuadra
         UiText("[TAB] ver las cartas", SCREEN_WIDTH - 230, SCREEN_HEIGHT - 22, 14,
                Fade(COL_CREAM, 0.35f));
 
-        if (!turnPlayer.isCpu && !turnPlayer.items.empty())
+        if (!turnPlayer.isCpu)
         {
-            UiText(TextFormat("[I] mochila (%i)", static_cast<int>(turnPlayer.items.size())),
-                   430, SCREEN_HEIGHT - 22, 14, Fade(COL_GOLD, 0.7f));
+            int carried = static_cast<int>(turnPlayer.items.size());
+
+            UiText(TextFormat("[I] mochila (%i)", carried),
+                   430, SCREEN_HEIGHT - 22, 14,
+                   Fade(COL_GOLD, carried > 0 ? 0.75f : 0.35f));
         }
 
         if (game.phase == GamePhase::ItemMenu) DrawItemMenu(game);

@@ -105,6 +105,7 @@ namespace ReyesCuadra
 
         bool hasMap      = false;
         int  extraWounds = 0;
+        int  rollBonus   = 0;
 
         // Cómo le fue contra el jefe de la cima: de ahí sale la corona.
         bool bossBeaten    = false;

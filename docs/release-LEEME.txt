@@ -40,7 +40,7 @@ CONTROLES
   1 2 3 4        elegir (camino, carta, parte del enemigo, item)
   ESPACIO        tirar el dado y seguir
   TAB            ver las cartas de cualquier jugador
-  I              abrir la mochila de items
+  I              abrir y cerrar la mochila (adentro, 1-4 para usar un item)
   M              silenciar
   F11            pantalla completa (Alt+Enter tambien)
   R              jugar de nuevo, en la pantalla final
@@ -60,9 +60,15 @@ LO QUE TE VAS A ENCONTRAR
 Las cartas (96 en total, bendiciones y maldiciones) se activan solas en la
 tirada que dice su texto. Con TAB podes leerlas todas en cualquier momento.
 
-Los items, en cambio, los gastas vos a mano con I: amuleto (+3 a la tirada),
-piedra de afilar (el proximo golpe saca 2 heridas), pocion (te saca una
-maldicion) y el mapa de la montana, que destapa el tablero entero.
+Los items, en cambio, los gastas vos a mano. Apreta I en cualquier momento de
+tu turno y se abre la mochila; adentro, el numero que tiene al lado cada item
+lo usa, y I de nuevo la cierra. Abajo de la pantalla tenes siempre el cartel
+"[I] mochila (2)" con cuantos llevas encima.
+
+Son cuatro: amuleto (+3 a tu proxima tirada), piedra de afilar (el proximo
+golpe a un enemigo saca 2 heridas), pocion (te saca de la mano una maldicion)
+y el mapa de la montana, que destapa el tablero entero y es pasivo, no se
+gasta. Los conseguis en los cofres y ganando batallas opcionales.
 
 
 SI ALGO SALE MAL
